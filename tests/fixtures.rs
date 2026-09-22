@@ -3,6 +3,7 @@ use assert_fs::prelude::*;
 use port_check::free_local_port;
 use reqwest::Url;
 use rstest::fixture;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream};
 use std::process::{Child, Command, Stdio};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -117,7 +118,7 @@ pub fn port() -> u16 {
     free_local_port().expect("Couldn't find a free local port")
 }
 
-/// Run dufs as a server; Start with a temporary directory, a free port and some
+/// Run sharefs as a server; Start with a temporary directory, a free port and some
 /// optional arguments then wait for a while for the server setup to complete.
 #[fixture]
 #[allow(dead_code)]
@@ -147,8 +148,15 @@ where
 /// Wait a max of 2s for the port to become available.
 pub fn wait_for_port(port: u16) {
     let start_wait = Instant::now();
+    let addresses = [
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port),
+        SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), port),
+    ];
 
-    while !port_check::is_port_reachable(format!("localhost:{port}")) {
+    while !addresses
+        .iter()
+        .any(|address| TcpStream::connect_timeout(address, Duration::from_millis(100)).is_ok())
+    {
         sleep(Duration::from_millis(250));
 
         if start_wait.elapsed().as_secs() > 2 {

@@ -72,7 +72,7 @@ fn auth_hashed_password(
     {
         assert_eq!(
             err.to_string(),
-            r#"Missing "realm" in header: Basic realm="DUFS""#
+            r#"Missing "realm" in header: Basic realm="sharefs""#
         );
     }
     let resp = fetch!(b"PUT", &url)

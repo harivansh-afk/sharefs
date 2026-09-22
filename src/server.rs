@@ -59,7 +59,7 @@ const INDEX_NAME: &str = "index.html";
 const BUF_SIZE: usize = 65536;
 const EDITABLE_TEXT_MAX_SIZE: u64 = 4194304; // 4M
 const RESUMABLE_UPLOAD_MIN_SIZE: u64 = 20971520; // 20M
-const HEALTH_CHECK_PATH: &str = "__dufs__/health";
+const HEALTH_CHECK_PATH: &str = "__sharefs__/health";
 pub const MAX_SUBPATHS_COUNT: u64 = 1000;
 
 pub struct Server {
@@ -72,7 +72,7 @@ pub struct Server {
 
 impl Server {
     pub fn init(args: Args, running: Arc<AtomicBool>) -> Result<Self> {
-        let assets_prefix = format!("__dufs_v{}__/", env!("CARGO_PKG_VERSION"));
+        let assets_prefix = format!("__sharefs_v{}__/", env!("CARGO_PKG_VERSION"));
         let single_file_req_paths = if args.path_is_file {
             vec![
                 args.uri_prefix.to_string(),

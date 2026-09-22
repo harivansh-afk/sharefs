@@ -1,6 +1,6 @@
 bind:
   - 0.0.0.0
-path-prefix: dufs
+path-prefix: sharefs
 hidden:
   - dir3
   - test.txt
