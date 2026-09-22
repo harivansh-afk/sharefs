@@ -3,10 +3,11 @@
 use crate::auth::{www_authenticate, AccessPaths, AccessPerm};
 use crate::http_utils::{body_full, IncomingStream, LengthLimitedStream};
 use crate::noscript::{detect_noscript, generate_noscript_html};
+use crate::shares::{normalize_share_path, NewShare, ShareStore};
 use crate::utils::{decode_uri, encode_uri, get_file_name, glob, parse_range, try_get_file_name};
 use crate::Args;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, ensure, Result};
 use async_deflate_zip::{Compression, WriterOptions, ZipWriter};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use bytes::Bytes;
@@ -17,7 +18,7 @@ use headers::{
     ContentLength, ContentType, ETag, HeaderMap, HeaderMapExt, IfMatch, IfModifiedSince,
     IfNoneMatch, IfRange, IfUnmodifiedSince, LastModified, Range,
 };
-use http_body_util::{combinators::BoxBody, BodyExt, StreamBody};
+use http_body_util::{combinators::BoxBody, BodyExt, Limited, StreamBody};
 use hyper::body::Frame;
 use hyper::{
     body::Incoming,
@@ -27,7 +28,7 @@ use hyper::{
     },
     Method, StatusCode, Uri,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 use std::cmp::Ordering;
@@ -37,10 +38,11 @@ use std::io::SeekFrom;
 use std::net::SocketAddr;
 use std::path::{Component, Path, PathBuf, MAIN_SEPARATOR};
 use std::sync::atomic::{self, AtomicBool};
-use std::sync::Arc;
-use std::time::SystemTime;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWrite};
+use tokio::sync::Semaphore;
 use tokio::{fs, io};
 
 use tokio_util::io::{ReaderStream, StreamReader};
@@ -60,7 +62,17 @@ const BUF_SIZE: usize = 65536;
 const EDITABLE_TEXT_MAX_SIZE: u64 = 4194304; // 4M
 const RESUMABLE_UPLOAD_MIN_SIZE: u64 = 20971520; // 20M
 const HEALTH_CHECK_PATH: &str = "__sharefs__/health";
+const SHARE_API_PATH: &str = "__sharefs__/api/shares";
 pub const MAX_SUBPATHS_COUNT: u64 = 1000;
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateShare {
+    path: String,
+    #[serde(default)]
+    editable: bool,
+    expires_at: Option<i64>,
+}
 
 pub struct Server {
     args: Args,
@@ -68,10 +80,38 @@ pub struct Server {
     html: Cow<'static, str>,
     single_file_req_paths: Vec<String>,
     running: Arc<AtomicBool>,
+    shares: Option<Arc<Mutex<ShareStore>>>,
+    share_requests: Arc<Semaphore>,
 }
 
 impl Server {
     pub fn init(args: Args, running: Arc<AtomicBool>) -> Result<Self> {
+        let shares = if let Some(path) = &args.share_db {
+            ensure!(
+                args.auth.has_users(),
+                "share metadata requires configured accounts"
+            );
+            ensure!(
+                !args.allow_symlink,
+                "share metadata requires filesystem containment"
+            );
+            let path = std::path::absolute(path)?;
+            let parent = path
+                .parent()
+                .ok_or_else(|| anyhow!("invalid share database path"))?
+                .canonicalize()?;
+            let database = parent.join(
+                path.file_name()
+                    .ok_or_else(|| anyhow!("invalid share database path"))?,
+            );
+            ensure!(
+                !database.starts_with(&args.serve_path),
+                "share database must be outside the served directory"
+            );
+            Some(Arc::new(Mutex::new(ShareStore::open(database)?)))
+        } else {
+            None
+        };
         let assets_prefix = format!("__sharefs_v{}__/", env!("CARGO_PKG_VERSION"));
         let single_file_req_paths = if args.path_is_file {
             vec![
@@ -96,6 +136,8 @@ impl Server {
             single_file_req_paths,
             assets_prefix,
             html,
+            shares,
+            share_requests: Arc::new(Semaphore::new(8)),
         })
     }
 
@@ -152,6 +194,12 @@ impl Server {
                 return Ok(res);
             }
         };
+
+        if relative_path == SHARE_API_PATH
+            || relative_path.starts_with(&format!("{SHARE_API_PATH}/"))
+        {
+            return self.handle_shares(req, &relative_path).await;
+        }
 
         if method == Method::GET
             && self
@@ -1002,6 +1050,189 @@ impl Server {
             *res.body_mut() = boxed_body;
         }
         Ok(())
+    }
+
+    async fn handle_shares(&self, req: Request, relative_path: &str) -> Result<Response> {
+        let mut res = Response::default();
+        res.headers_mut().insert(
+            "cache-control",
+            HeaderValue::from_static("private, no-store"),
+        );
+        let Some(store) = &self.shares else {
+            status_not_found(&mut res);
+            return Ok(res);
+        };
+        let authorization = req.headers().get(AUTHORIZATION);
+        let (user, paths) = self
+            .args
+            .auth
+            .guard("/", req.method(), authorization, None, false);
+        let Some(owner) = user else {
+            self.auth_reject(&mut res)?;
+            return Ok(res);
+        };
+        if !paths.is_some_and(|paths| paths.perm().readwrite()) {
+            status_forbid(&mut res);
+            return Ok(res);
+        }
+        if let Some(origin) = req.headers().get("origin") {
+            let valid = origin
+                .to_str()
+                .ok()
+                .and_then(|value| value.parse::<Uri>().ok())
+                .and_then(|uri| {
+                    uri.authority()
+                        .map(|authority| authority.as_str().to_owned())
+                })
+                .is_some_and(|authority| {
+                    req.headers()
+                        .get("host")
+                        .is_some_and(|host| host.as_bytes() == authority.as_bytes())
+                });
+            if !valid {
+                status_forbid(&mut res);
+                return Ok(res);
+            }
+        }
+        let Ok(permit) = self.share_requests.clone().try_acquire_owned() else {
+            *res.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
+            return Ok(res);
+        };
+        let id = relative_path
+            .strip_prefix(&format!("{SHARE_API_PATH}/"))
+            .unwrap_or("")
+            .to_owned();
+        let method = req.method().clone();
+        let create = if method == Method::POST && id.is_empty() {
+            let json = req
+                .headers()
+                .get(CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| {
+                    value
+                        .split(';')
+                        .next()
+                        .is_some_and(|mime| mime.trim() == "application/json")
+                });
+            if !json {
+                *res.status_mut() = StatusCode::UNSUPPORTED_MEDIA_TYPE;
+                return Ok(res);
+            }
+            let authorization = authorization.cloned();
+            let body = match tokio::time::timeout(
+                Duration::from_secs(5),
+                Limited::new(req.into_body(), 16384).collect(),
+            )
+            .await
+            {
+                Ok(Ok(body)) => body.to_bytes(),
+                Ok(Err(_)) => {
+                    *res.status_mut() = StatusCode::PAYLOAD_TOO_LARGE;
+                    return Ok(res);
+                }
+                Err(_) => {
+                    *res.status_mut() = StatusCode::REQUEST_TIMEOUT;
+                    return Ok(res);
+                }
+            };
+            let Ok(mut create) = serde_json::from_slice::<CreateShare>(&body) else {
+                status_bad_request(&mut res, "Invalid share request");
+                return Ok(res);
+            };
+            let Ok(path) = normalize_share_path(&create.path) else {
+                status_bad_request(&mut res, "Invalid share path");
+                return Ok(res);
+            };
+            create.path = path;
+            if create
+                .expires_at
+                .is_some_and(|expiry| expiry <= Utc::now().timestamp())
+            {
+                status_bad_request(&mut res, "Share expiry must be in the future");
+                return Ok(res);
+            }
+            let operation = if create.editable {
+                Method::PUT
+            } else {
+                Method::GET
+            };
+            let (_, permitted) = self.args.auth.guard(
+                &create.path,
+                &operation,
+                authorization.as_ref(),
+                None,
+                false,
+            );
+            if permitted.is_none()
+                || (create.editable && (!self.args.allow_upload || !self.args.allow_delete))
+            {
+                status_forbid(&mut res);
+                return Ok(res);
+            }
+            let Some(path) = self.join_path(create.path.trim_start_matches('/')) else {
+                status_bad_request(&mut res, "Invalid share path");
+                return Ok(res);
+            };
+            if !self.is_root_contained(&path).await {
+                status_forbid(&mut res);
+                return Ok(res);
+            }
+            let metadata = match fs::metadata(path).await {
+                Ok(metadata) if metadata.is_file() || metadata.is_dir() => metadata,
+                _ => {
+                    status_not_found(&mut res);
+                    return Ok(res);
+                }
+            };
+            Some((create, metadata.is_dir()))
+        } else {
+            None
+        };
+        let store = Arc::clone(store);
+        let (status, body) = tokio::task::spawn_blocking(move || -> Result<_> {
+            let _permit = permit;
+            let store = store
+                .lock()
+                .map_err(|_| anyhow!("share database lock poisoned"))?;
+            match (method, id.is_empty(), create) {
+                (Method::GET, true, _) => {
+                    Ok((StatusCode::OK, serde_json::to_vec(&store.list(&owner)?)?))
+                }
+                (Method::GET, false, _) => {
+                    match store.resolve(&id)?.filter(|share| share.owner == owner) {
+                        Some(share) => Ok((StatusCode::OK, serde_json::to_vec(&share)?)),
+                        None => Ok((StatusCode::NOT_FOUND, Vec::new())),
+                    }
+                }
+                (Method::POST, true, Some((create, is_dir))) => {
+                    let share = store.create(NewShare {
+                        owner: &owner,
+                        path: &create.path,
+                        is_dir,
+                        editable: create.editable,
+                        expires_at: create.expires_at,
+                    })?;
+                    Ok((StatusCode::CREATED, serde_json::to_vec(&share)?))
+                }
+                (Method::DELETE, false, _) => {
+                    let status = if store.revoke(&id, &owner)? {
+                        StatusCode::NO_CONTENT
+                    } else {
+                        StatusCode::NOT_FOUND
+                    };
+                    Ok((status, Vec::new()))
+                }
+                _ => Ok((StatusCode::METHOD_NOT_ALLOWED, Vec::new())),
+            }
+        })
+        .await??;
+        *res.status_mut() = status;
+        if !body.is_empty() {
+            res.headers_mut()
+                .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+            *res.body_mut() = body_full(body);
+        }
+        Ok(res)
     }
 
     async fn handle_edit_file(

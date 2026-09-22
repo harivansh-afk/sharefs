@@ -7,6 +7,22 @@ use std::path::Path;
 use std::time::Duration;
 use uuid::Uuid;
 
+pub fn normalize_share_path(path: &str) -> Result<String> {
+    ensure!(
+        path.starts_with('/')
+            && !path.contains(['\\', '\0'])
+            && !path.split('/').any(|part| matches!(part, "." | "..")),
+        "share path must be rooted within the served directory"
+    );
+    Ok(format!(
+        "/{}",
+        path.split('/')
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join("/")
+    ))
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Share {
     pub id: String,
@@ -89,27 +105,10 @@ impl ShareStore {
 
     pub fn create(&self, request: NewShare<'_>) -> Result<Share> {
         ensure!(!request.owner.is_empty(), "share owner is required");
-        ensure!(
-            request.path.starts_with('/')
-                && !request.path.contains(['\\', '\0'])
-                && !request
-                    .path
-                    .split('/')
-                    .any(|part| matches!(part, "." | "..")),
-            "share path must be rooted within the served directory"
-        );
+        let path = normalize_share_path(request.path)?;
         ensure!(
             request.expires_at.is_none_or(|expiry| expiry >= 0),
             "share expiry must be a Unix timestamp"
-        );
-        let path = format!(
-            "/{}",
-            request
-                .path
-                .split('/')
-                .filter(|part| !part.is_empty())
-                .collect::<Vec<_>>()
-                .join("/")
         );
         let share = Share {
             id: format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple()),
