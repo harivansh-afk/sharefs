@@ -143,12 +143,20 @@ pub fn build_cli() -> Command {
                 .help("Allow upload files/folders"),
         )
         .arg(
-            Arg::new("allow-delete")
-                .env("SHAREFS_ALLOW_DELETE")
-				.hide_env(true)
-                .long("allow-delete")
+            Arg::new("allow-edit")
+                .env("SHAREFS_ALLOW_EDIT")
+                .hide_env(true)
+                .long("allow-edit")
                 .action(ArgAction::SetTrue)
-                .help("Allow delete files/folders"),
+                .help("Allow editing existing files"),
+        )
+        .arg(
+            Arg::new("allow-rename")
+                .env("SHAREFS_ALLOW_RENAME")
+                .hide_env(true)
+                .long("allow-rename")
+                .action(ArgAction::SetTrue)
+                .help("Allow renaming within a directory without replacing files"),
         )
         .arg(
             Arg::new("allow-search")
@@ -315,7 +323,8 @@ pub struct Args {
     pub auth: AccessControl,
     pub allow_all: bool,
     pub allow_upload: bool,
-    pub allow_delete: bool,
+    pub allow_edit: bool,
+    pub allow_rename: bool,
     pub allow_search: bool,
     pub allow_symlink: bool,
     pub allow_archive: bool,
@@ -416,8 +425,11 @@ impl Args {
         if !args.allow_upload {
             args.allow_upload = allow_all || matches.get_flag("allow-upload");
         }
-        if !args.allow_delete {
-            args.allow_delete = allow_all || matches.get_flag("allow-delete");
+        if !args.allow_edit {
+            args.allow_edit = allow_all || matches.get_flag("allow-edit");
+        }
+        if !args.allow_rename {
+            args.allow_rename = allow_all || matches.get_flag("allow-rename");
         }
         if !args.allow_search {
             args.allow_search = allow_all || matches.get_flag("allow-search");

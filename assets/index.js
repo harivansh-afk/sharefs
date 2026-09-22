@@ -1,3 +1,5 @@
+import { setupActions } from "./actions.js";
+
 /**
  * @typedef {object} PathItem
  * @property {"Dir"|"SymlinkDir"|"File"|"SymlinkFile"} path_type
@@ -13,7 +15,9 @@
  * @property {"Index" | "Edit" | "View"} kind
  * @property {PathItem[]} paths
  * @property {boolean} allow_upload
- * @property {boolean} allow_delete
+ * @property {boolean} allow_edit
+ * @property {boolean} allow_rename
+ * @property {boolean} allow_share
  * @property {boolean} allow_search
  * @property {boolean} allow_archive
  * @property {boolean} auth
@@ -57,11 +61,7 @@ const ICONS = {
   symlinkFile: `<svg height="16" viewBox="0 0 12 16" width="12"><path fill-rule="evenodd" d="M8.5 1H1c-.55 0-1 .45-1 1v12c0 .55.45 1 1 1h10c.55 0 1-.45 1-1V4.5L8.5 1zM11 14H1V2h7l3 3v9zM6 4.5l4 3-4 3v-2c-.98-.02-1.84.22-2.55.7-.71.48-1.19 1.25-1.45 2.3.02-1.64.39-2.88 1.13-3.73.73-.84 1.69-1.27 2.88-1.27v-2H6z"></path></svg>`,
   symlinkDir: `<svg height="16" viewBox="0 0 14 16" width="14"><path fill-rule="evenodd" d="M13 4H7V3c0-.66-.31-1-1-1H1c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1V5c0-.55-.45-1-1-1zM1 3h5v1H1V3zm6 9v-2c-.98-.02-1.84.22-2.55.7-.71.48-1.19 1.25-1.45 2.3.02-1.64.39-2.88 1.13-3.73C4.86 8.43 5.82 8 7.01 8V6l4 3-4 3H7z"></path></svg>`,
   file: `<svg height="16" viewBox="0 0 12 16" width="12"><path fill-rule="evenodd" d="M6 5H2V4h4v1zM2 8h7V7H2v1zm0 2h7V9H2v1zm0 2h7v-1H2v1zm10-7.5V14c0 .55-.45 1-1 1H1c-.55 0-1-.45-1-1V2c0-.55.45-1 1-1h7.5L12 4.5zM11 5L8 2H1v12h10V5z"></path></svg>`,
-  download: `<svg width="16" height="16" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>`,
-  move: `<svg width="16" height="16" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M1.5 1.5A.5.5 0 0 0 1 2v4.8a2.5 2.5 0 0 0 2.5 2.5h9.793l-3.347 3.346a.5.5 0 0 0 .708.708l4.2-4.2a.5.5 0 0 0 0-.708l-4-4a.5.5 0 0 0-.708.708L13.293 8.3H3.5A1.5 1.5 0 0 1 2 6.8V2a.5.5 0 0 0-.5-.5z"/></svg>`,
   edit: `<svg width="16" height="16" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>`,
-  delete: `<svg width="16" height="16" viewBox="0 0 16 16"><path d="M6.854 7.146a.5.5 0 1 0-.708.708L7.293 9l-1.147 1.146a.5.5 0 0 0 .708.708L8 9.707l1.146 1.147a.5.5 0 0 0 .708-.708L8.707 9l1.147-1.146a.5.5 0 0 0-.708-.708L8 8.293 6.854 7.146z"/><path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2z"/></svg>`,
-  view: `<svg width="16" height="16" viewBox="0 0 16 16"><path d="M4 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2zm0 1h8a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1"/></svg>`,
 }
 
 /**
@@ -93,6 +93,7 @@ let $emptyFolder;
  * @type Element
  */
 let $editor;
+let editorDirty = false;
 /**
  * @type Element
  */
@@ -108,7 +109,7 @@ let $userName;
 
 // manage unload event to prevent leaving with uploads in progress
 const beforeUnloadHandler = (event) => {
-  if (Uploader.queues.length > 0 || Uploader.runnings > 0) {
+  if (editorDirty || Uploader.queues.length > 0 || Uploader.runnings > 0) {
     event.preventDefault();
     event.returnValue = '';
     return ''; // for some browsers
@@ -143,6 +144,7 @@ async function ready() {
   window.addEventListener('beforeunload', beforeUnloadHandler);
 
   addBreadcrumb(DATA.href, DATA.uri_prefix);
+  setupActions(DATA);
 
   if (DATA.kind === "Index") {
     document.title = `Index of ${DATA.href} - sharefs`;
@@ -367,8 +369,6 @@ async function setupIndexPage() {
   if (DATA.allow_upload) {
     setupDropzone();
     setupUploadFile();
-    setupNewFolder();
-    setupNewFile();
   }
 
   if (DATA.auth) {
@@ -453,47 +453,14 @@ function renderPathsTableBody() {
 function addPath(file, index) {
   const encodedName = encodedStr(file.name);
   let url = newUrl(file.name);
-  let actionDelete = "";
-  let actionDownload = "";
-  let actionMove = "";
-  let actionEdit = "";
-  let actionView = "";
-  let isDir = file.path_type.endsWith("Dir");
-  if (isDir) {
-    url += "/";
-    if (DATA.allow_archive) {
-      actionDownload = `
-      <div class="action-btn">
-        <a class="dlwt" href="${url}?zip" title="Download folder as a .zip file" download>${ICONS.download}</a>
-      </div>`;
-    }
-  } else {
-    actionDownload = `
-    <div class="action-btn" >
-      <a class="dlwt" href="${url}" title="Download file" download>${ICONS.download}</a>
-    </div>`;
-  }
-  if (DATA.allow_delete) {
-    if (DATA.allow_upload) {
-      actionMove = `<div onclick="movePath(${index})" class="action-btn" id="moveBtn${index}" title="Move & Rename">${ICONS.move}</div>`;
-      if (!isDir) {
-        actionEdit = `<a class="action-btn" title="Edit file" target="_blank" href="${url}?edit">${ICONS.edit}</a>`;
-      }
-    }
-    actionDelete = `
-    <div onclick="deletePath(${index})" class="action-btn" id="deleteBtn${index}" title="Delete">${ICONS.delete}</div>`;
-  }
-  if (!actionEdit && !isDir) {
-    actionView = `<a class="action-btn" title="View file" target="_blank" href="${url}?view">${ICONS.view}</a>`;
-  }
-  let actionCell = `
-  <td class="cell-actions">
-    ${actionDownload}
-    ${actionView}
-    ${actionMove}
-    ${actionDelete}
-    ${actionEdit}
-  </td>`;
+  const isDir = file.path_type.endsWith("Dir");
+  if (isDir) url += "/";
+  const editable = !isDir && DATA.allow_edit && file.size <= 4194304 &&
+    /(?:\.(?:txt|md|rs|nix|toml|json|ya?ml|js|ts|jsx|tsx|html?|css|svg|csv|log|sh|py|go|c|h|cpp|hpp|ini|conf|xml|sql)|^(?:README|LICENSE|Makefile|Dockerfile))$/i.test(file.name);
+  const share = !isDir && DATA.allow_share ? `<button type="button" class="action-btn" data-action="share" data-index="${index}" title="Share file" aria-label="Share file"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2m3 6a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2" fill="none" stroke="currentColor" stroke-width="2"/></svg><span class="action-label">Share</span></button>` : "";
+  const edit = editable ? `<a class="action-btn" title="Edit file" aria-label="Edit file" target="_blank" rel="noopener" href="${url}?edit">${ICONS.edit}<span class="action-label">Edit</span></a>` : "";
+  const more = (!isDir || DATA.allow_rename) ? `<button type="button" class="action-btn more-actions" data-action="more" data-index="${index}" title="More actions" aria-label="More actions" aria-haspopup="true"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>` : "";
+  const actionCell = `<td class="cell-actions"><div class="row-actions">${share}${edit}${more}</div></td>`;
 
   let sizeDisplay = isDir ? formatDirSize(file.size) : formatFileSize(file.size).join(" ");
 
@@ -503,7 +470,7 @@ function addPath(file, index) {
     ${getPathSvg(file.path_type)}
   </td>
   <td class="path cell-name">
-    <a href="${url}" ${isDir ? "" : `target="_blank"`}>${encodedName}</a>
+    <a href="${url}" title="${encodedName}" ${isDir ? "" : `target="_blank" rel="noopener"`}>${encodedName}</a>
   </td>
   <td class="cell-mtime">${formatMtime(file.mtime)}</td>
   <td class="cell-size">${sizeDisplay}</td>
@@ -570,30 +537,14 @@ function setupSearch() {
 }
 
 function setupUploadFile() {
-  document.querySelector(".upload-file").classList.remove("hidden");
+  const button = document.querySelector(".upload-file");
+  button.classList.remove("hidden");
+  button.addEventListener("click", () => document.getElementById("file").click());
   document.getElementById("file").addEventListener("change", async e => {
     const files = e.target.files;
     for (let file of files) {
       new Uploader(file, []).upload();
     }
-  });
-}
-
-function setupNewFolder() {
-  const $newFolder = document.querySelector(".new-folder");
-  $newFolder.classList.remove("hidden");
-  $newFolder.addEventListener("click", () => {
-    const name = prompt("Enter folder name");
-    if (name) createFolder(name);
-  });
-}
-
-function setupNewFile() {
-  const $newFile = document.querySelector(".new-file");
-  $newFile.classList.remove("hidden");
-  $newFile.addEventListener("click", () => {
-    const name = prompt("Enter file name");
-    if (name) createFile(name);
   });
 }
 
@@ -604,35 +555,20 @@ async function setupEditorPage() {
   $download.classList.remove("hidden");
   $download.href = url;
 
-  if (DATA.kind == "Edit") {
-    const $moveFile = document.querySelector(".move-file");
-    $moveFile.classList.remove("hidden");
-    $moveFile.addEventListener("click", async () => {
-      const query = location.href.slice(url.length);
-      const newFileUrl = await doMovePath(url);
-      if (newFileUrl) {
-        location.href = newFileUrl + query;
-      }
+  const canEdit = DATA.kind === "Edit" && DATA.allow_edit && DATA.editable;
+  if (DATA.allow_rename) document.querySelector(".rename-file").classList.remove("hidden");
+  if (DATA.allow_share) document.querySelector(".share-file").classList.remove("hidden");
+  if (canEdit) {
+    const save = document.querySelector(".save-btn");
+    save.classList.remove("hidden");
+    save.addEventListener("click", saveChange);
+    $editor.addEventListener("input", () => {
+      editorDirty = true;
+      document.querySelector(".rename-file").disabled = true;
+      document.getElementById("save-status").textContent = "Unsaved changes";
     });
-
-    const $deleteFile = document.querySelector(".delete-file");
-    $deleteFile.classList.remove("hidden");
-    $deleteFile.addEventListener("click", async () => {
-      const url = baseUrl();
-      const name = baseName(url);
-      await doDeletePath(name, url, () => {
-        location.href = location.href.split("/").slice(0, -1).join("/");
-      });
-    });
-
-    if (DATA.editable) {
-      const $saveBtn = document.querySelector(".save-btn");
-      $saveBtn.classList.remove("hidden");
-      $saveBtn.addEventListener("click", saveChange);
-    }
-  } else if (DATA.kind == "View") {
-    $editor.readonly = true;
   }
+  $editor.readOnly = !canEdit;
 
   if (!DATA.editable) {
     const $notEditable = document.querySelector(".not-editable");
@@ -665,103 +601,22 @@ async function setupEditorPage() {
   }
 }
 
-/**
- * Delete path
- * @param {number} index
- * @returns
- */
-async function deletePath(index) {
-  const file = DATA.paths[index];
-  if (!file) return;
-  await doDeletePath(file.name, newUrl(file.name), () => {
-    document.getElementById(`addPath${index}`)?.remove();
-    DATA.paths[index] = null;
-    if (!DATA.paths.find(v => !!v)) {
-      $pathsTable.classList.add("hidden");
-      $emptyFolder.textContent = DIR_EMPTY_NOTE;
-      $emptyFolder.classList.remove("hidden");
-    }
-  });
-}
-
-async function doDeletePath(name, url, cb) {
-  if (!confirm(`Delete \`${name}\`?`)) return;
-  try {
-    await checkAuth();
-    const res = await fetch(url, {
-      method: "DELETE",
-    });
-    await assertResOK(res);
-    cb();
-  } catch (err) {
-    alert(`Cannot delete \`${file.name}\`, ${err.message}`);
-  }
-}
-
-/**
- * Move path
- * @param {number} index
- * @returns
- */
-async function movePath(index) {
-  const file = DATA.paths[index];
-  if (!file) return;
-  const fileUrl = newUrl(file.name);
-  const newFileUrl = await doMovePath(fileUrl);
-  if (newFileUrl) {
-    location.href = newFileUrl.split("/").slice(0, -1).join("/");
-  }
-}
-
-async function doMovePath(fileUrl) {
-  const fileUrlObj = new URL(fileUrl);
-
-  const prefix = DATA.uri_prefix.slice(0, -1);
-
-  const filePath = decodeURIComponent(fileUrlObj.pathname.slice(prefix.length));
-
-  let newPath = prompt("Enter new path", filePath);
-  if (!newPath) return;
-  if (!newPath.startsWith("/")) newPath = "/" + newPath;
-  if (filePath === newPath) return;
-  const newFileUrl = fileUrlObj.origin + prefix + newPath.split("/").map(encodeURIComponent).join("/");
-
-  try {
-    await checkAuth();
-    const res1 = await fetch(newFileUrl, {
-      method: "HEAD",
-    });
-    if (res1.status === 200) {
-      if (!confirm("Override existing file?")) {
-        return;
-      }
-    }
-    const res2 = await fetch(fileUrl, {
-      method: "MOVE",
-      headers: {
-        "Destination": newFileUrl,
-      }
-    });
-    await assertResOK(res2);
-    return newFileUrl;
-  } catch (err) {
-    alert(`Cannot move \`${filePath}\` to \`${newPath}\`, ${err.message}`);
-  }
-}
-
-
-/**
- * Save editor change
- */
 async function saveChange() {
+  const button = document.querySelector(".save-btn");
+  const status = document.getElementById("save-status");
+  const contents = $editor.value;
+  button.disabled = true;
+  status.textContent = "Saving…";
   try {
-    await fetch(baseUrl(), {
-      method: "PUT",
-      body: $editor.value,
-    });
-    location.reload();
+    const res = await fetch(baseUrl(), { method: "PUT", body: contents });
+    await assertResOK(res);
+    editorDirty = $editor.value !== contents;
+    document.querySelector(".rename-file").disabled = editorDirty;
+    status.textContent = editorDirty ? "Saved. Newer changes are still unsaved." : "Saved";
   } catch (err) {
-    alert(`Failed to save file, ${err.message}`);
+    status.textContent = `Save failed: ${err.message}. Your changes are still in the editor.`;
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -786,39 +641,6 @@ function logout() {
     location.href = url;
   }
   xhr.send();
-}
-
-/**
- * Create a folder
- * @param {string} name
- */
-async function createFolder(name) {
-  const url = newUrl(name);
-  try {
-    await checkAuth();
-    const res = await fetch(url, {
-      method: "MKCOL",
-    });
-    await assertResOK(res);
-    location.href = url;
-  } catch (err) {
-    alert(`Cannot create folder \`${name}\`, ${err.message}`);
-  }
-}
-
-async function createFile(name) {
-  const url = newUrl(name);
-  try {
-    await checkAuth();
-    const res = await fetch(url, {
-      method: "PUT",
-      body: "",
-    });
-    await assertResOK(res);
-    location.href = url + "?edit";
-  } catch (err) {
-    alert(`Cannot create file \`${name}\`, ${err.message}`);
-  }
 }
 
 async function addFileEntries(entries, dirs) {

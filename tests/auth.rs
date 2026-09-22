@@ -353,14 +353,14 @@ fn auth_data(
     let resp = reqwest::blocking::get(server.url())?;
     let content = resp.text()?;
     let json = utils::retrieve_json(&content).unwrap();
-    assert_eq!(json["allow_delete"], serde_json::Value::Bool(false));
+    assert_eq!(json["allow_edit"], serde_json::Value::Bool(false));
     assert_eq!(json["allow_upload"], serde_json::Value::Bool(false));
     let resp = fetch!(b"GET", server.url())
         .basic_auth("user", Some("pass"))
         .send()?;
     let content = resp.text()?;
     let json = utils::retrieve_json(&content).unwrap();
-    assert_eq!(json["allow_delete"], serde_json::Value::Bool(true));
+    assert_eq!(json["allow_edit"], serde_json::Value::Bool(true));
     assert_eq!(json["allow_upload"], serde_json::Value::Bool(true));
     Ok(())
 }

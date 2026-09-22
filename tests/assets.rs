@@ -156,3 +156,19 @@ fn assets_override_not_found_page(tmpdir: TempDir, port: u16) -> Result<(), Erro
     child.kill()?;
     Ok(())
 }
+
+#[rstest]
+fn asset_actions_module(server: TestServer) -> Result<(), Error> {
+    let url = format!(
+        "{}__sharefs_v{}__/actions.js",
+        server.url(),
+        env!("CARGO_PKG_VERSION")
+    );
+    let response = reqwest::blocking::get(url)?;
+    assert_eq!(response.status(), 200);
+    assert!(response.headers()["content-type"]
+        .to_str()?
+        .starts_with("application/javascript"));
+    assert!(response.text()?.contains("export function setupActions"));
+    Ok(())
+}

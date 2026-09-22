@@ -11,7 +11,7 @@ nix develop
 Plan
 
 1. Keep share permission and expiry decisions in a small Sans-I/O core.
-2. Use one authenticated API for the CLI and web Share controls.
+2. Use one request contract for the CLI and web Share controls.
 3. Make saves conflict-aware; load directory details and viewers on demand.
 4. Bound filesystem, database and transfer work so browsing stays responsive.
 5. Measure browser, network and I/O time before changing runtimes or pinning threads.
@@ -43,3 +43,12 @@ requests. Renaming the file breaks its link; replacing its contents at the same
 path changes what recipients read. There is no database or per-link revocation.
 Keeping the signing key preserves links across restarts; rotating it revokes all
 links. The former database and download-token formats are no longer used.
+
+
+File operations
+
+`--allow-upload` permits new files, `--allow-edit` permits changes to existing
+files, and `--allow-rename` permits renaming within the same directory. Rename
+never replaces a destination. DELETE is always rejected, including with `-A`.
+The browser exposes Share and text editing directly, with Download and Rename
+under More actions. Saving preserves the editor contents on a failed request.

@@ -301,7 +301,7 @@ fn options_dir(server: TestServer) -> Result<(), Error> {
     assert_eq!(resp.status(), 200);
     assert_eq!(
         resp.headers().get("allow").unwrap(),
-        "GET,HEAD,PUT,OPTIONS,DELETE,PATCH,PROPFIND,COPY,MOVE,CHECKAUTH,LOGOUT"
+        "GET,HEAD,PUT,OPTIONS,PATCH,PROPFIND,COPY,MOVE,CHECKAUTH,LOGOUT"
     );
     assert_eq!(resp.headers().get("dav").unwrap(), "1, 2, 3");
     Ok(())
@@ -346,19 +346,19 @@ fn put_file_conflict_dir(#[with(&["-A"])] server: TestServer) -> Result<(), Erro
 }
 
 #[rstest]
-fn delete_file(#[with(&["-A"])] server: TestServer) -> Result<(), Error> {
+fn deletion_is_disabled(#[with(&["-A"])] server: TestServer) -> Result<(), Error> {
     let url = format!("{}test.html", server.url());
     let resp = fetch!(b"DELETE", &url).send()?;
-    assert_eq!(resp.status(), 204);
+    assert_eq!(resp.status(), 403);
     let resp = reqwest::blocking::get(url)?;
-    assert_eq!(resp.status(), 404);
+    assert_eq!(resp.status(), 200);
     Ok(())
 }
 
 #[rstest]
 fn delete_file_404(#[with(&["-A"])] server: TestServer) -> Result<(), Error> {
     let resp = fetch!(b"DELETE", format!("{}file1", server.url())).send()?;
-    assert_eq!(resp.status(), 404);
+    assert_eq!(resp.status(), 403);
     Ok(())
 }
 
@@ -393,7 +393,9 @@ fn get_file_content_type(server: TestServer) -> Result<(), Error> {
 }
 
 #[rstest]
-fn resumable_upload(#[with(&["--allow-upload"])] server: TestServer) -> Result<(), Error> {
+fn resumable_upload(
+    #[with(&["--allow-upload", "--allow-edit"])] server: TestServer,
+) -> Result<(), Error> {
     let url = format!("{}file1", server.url());
     let resp = fetch!(b"PUT", &url).body(b"abc".to_vec()).send()?;
     assert_eq!(resp.status(), 201);
@@ -405,5 +407,19 @@ fn resumable_upload(#[with(&["--allow-upload"])] server: TestServer) -> Result<(
     let resp = reqwest::blocking::get(url)?;
     assert_eq!(resp.status(), 200);
     assert_eq!(resp.text().unwrap(), "abc123");
+    Ok(())
+}
+
+#[rstest]
+fn uploading_does_not_allow_appending_to_existing_files(
+    #[with(&["--allow-upload"])] server: TestServer,
+) -> Result<(), Error> {
+    let url = server.url().join("test.txt")?;
+    let response = fetch!(b"PATCH", url.clone())
+        .header("X-Update-Range", "append")
+        .body("changed")
+        .send()?;
+    assert_eq!(response.status(), 403);
+    assert_eq!(reqwest::blocking::get(url)?.text()?, "This is test.txt");
     Ok(())
 }
