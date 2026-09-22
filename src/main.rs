@@ -1,11 +1,13 @@
 mod args;
 mod auth;
+mod control;
 mod http_logger;
 mod http_utils;
 mod logger;
 mod noscript;
 mod server;
-mod shares;
+mod sharing;
+mod token;
 mod utils;
 
 #[macro_use]
@@ -118,8 +120,16 @@ fn serve(
     running: Arc<AtomicBool>,
 ) -> Result<Vec<JoinHandle<()>>> {
     let tls_config = (args.tls_cert.clone(), args.tls_key.clone());
+    let control_socket = args.control_socket.clone();
     let server_handle = Arc::new(Server::init(args, running)?);
     let mut handles = vec![];
+    if let Some(path) = control_socket {
+        let sharing = server_handle
+            .sharing
+            .clone()
+            .context("control socket requires sharing")?;
+        handles.push(control::listen(&path, sharing)?);
+    }
     for listener in listeners {
         let server_handle = server_handle.clone();
         match listener {

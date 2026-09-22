@@ -1,212 +1,211 @@
 mod fixtures;
 
+use std::{fs, os::unix::fs::PermissionsExt};
+
 use assert_fs::prelude::*;
 use fixtures::{tmpdir, Error, TestServer};
-use reqwest::blocking::Client;
+use reqwest::{blocking::Client, Url};
 use serde_json::{json, Value};
-use std::time::Duration;
 
-const API: &str = "__sharefs__/api/shares";
+const API: &str = "__sharefs__/api/share";
 
-fn client() -> Client {
-    Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap()
-}
-
-#[test]
-fn authenticated_share_lifecycle() -> Result<(), Error> {
+fn server() -> Result<(TestServer, assert_fs::TempDir), Error> {
     let state = assert_fs::TempDir::new()?;
-    let database = state.path().join("shares.db");
+    let key = state.child("key");
+    key.write_binary(&[7; 32])?;
+    fs::set_permissions(key.path(), fs::Permissions::from_mode(0o600))?;
+
     let server = TestServer::start(
         tmpdir(),
         0,
         [
             "--bind",
             "127.0.0.1",
-            "--share-db",
-            database.to_str().unwrap(),
+            "--share-key-file",
+            key.path().to_str().unwrap(),
+            "--public-url",
+            "https://files.example",
             "--auth",
-            "rathi:secret@/:rw|other:secret@/:rw|reader:secret@/",
+            "owner:secret@/:rw|reader:secret@/",
             "--allow-upload",
             "--allow-delete",
         ],
     )?;
-    let client = client();
-    let url = server.url().join(API)?;
-    assert_eq!(client.get(url.clone()).send()?.status(), 401);
+    Ok((server, state))
+}
+
+fn create(server: &TestServer, path: &str) -> Result<(Value, Url), Error> {
+    let response = Client::new()
+        .post(server.url().join(API)?)
+        .basic_auth("owner", Some("secret"))
+        .header("Content-Type", "application/json")
+        .body(json!({"path": path, "expires_in": 3600}).to_string())
+        .send()?;
+    assert_eq!(response.status(), 201);
+
+    let body: Value = serde_json::from_str(&response.text()?)?;
+    let public = Url::parse(body["url"].as_str().unwrap())?;
+    assert_eq!(
+        public.origin().ascii_serialization(),
+        "https://files.example"
+    );
+    let local = server
+        .url()
+        .join(&format!("{}?{}", public.path(), public.query().unwrap()))?;
+    Ok((body, local))
+}
+
+#[test]
+fn links_read_live_files_and_support_head_and_ranges() -> Result<(), Error> {
+    let (server, _state) = server()?;
+    let client = Client::new();
+    let (_, url) = create(&server, "/test.txt")?;
+
+    assert_eq!(
+        client.get(server.url().join("test.txt")?).send()?.status(),
+        401
+    );
+    assert_eq!(client.get(url.clone()).send()?.text()?, "This is test.txt");
+    assert_eq!(client.head(url.clone()).send()?.status(), 200);
+
+    let response = client
+        .get(url.clone())
+        .header("Range", "bytes=0-3")
+        .send()?;
+    assert_eq!(response.status(), 206);
+    assert_eq!(response.text()?, "This");
+
+    // Public multipart requests fall back to a bounded full-file stream.
+    let response = client
+        .get(url.clone())
+        .header("Range", "bytes=0-3,5-6")
+        .send()?;
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.text()?, "This is test.txt");
+
+    fs::write(server.path().join("test.txt"), "changed in place")?;
+    assert_eq!(client.get(url.clone()).send()?.text()?, "changed in place");
     assert_eq!(
         client
-            .get(url.clone())
+            .put(url.clone())
+            .body("unauthorized")
+            .send()?
+            .status(),
+        403
+    );
+    assert_eq!(client.delete(url.clone()).send()?.status(), 403);
+    assert_eq!(client.get(url).send()?.text()?, "changed in place");
+    Ok(())
+}
+
+#[test]
+fn tokens_cannot_be_reused_for_other_paths_or_owner_apis() -> Result<(), Error> {
+    let (server, _state) = server()?;
+    let client = Client::new();
+    let (_, mut url) = create(&server, "/test.txt")?;
+    url.set_path("/index.html");
+    assert_eq!(client.get(url.clone()).send()?.status(), 404);
+
+    url.set_path(&format!("/{API}"));
+    assert_eq!(client.post(url.clone()).body("{}").send()?.status(), 401);
+
+    url.set_path("/test.txt");
+    let token = url.query().unwrap().strip_prefix("token=").unwrap();
+    let mut raw = token.as_bytes().to_vec();
+    raw[20] = if raw[20] == b'A' { b'B' } else { b'A' };
+    url.set_query(Some(&format!("token={}", String::from_utf8(raw)?)));
+    assert_eq!(client.get(url).send()?.status(), 404);
+    Ok(())
+}
+
+#[test]
+fn minting_requires_owner_auth_valid_input_and_same_origin() -> Result<(), Error> {
+    let (server, _state) = server()?;
+    let client = Client::new();
+    let url = server.url().join(API)?;
+    assert_eq!(client.post(url.clone()).send()?.status(), 401);
+    assert_eq!(
+        client
+            .post(url.clone())
             .basic_auth("reader", Some("secret"))
             .send()?
             .status(),
         403
     );
-    let response = client
-        .post(url.clone())
-        .basic_auth("rathi", Some("secret"))
-        .header("Content-Type", "application/json")
-        .body(json!({"path":"/test.txt","editable":true}).to_string())
-        .send()?;
-    assert_eq!(response.status(), 201);
-    let share: Value = serde_json::from_str(&response.text()?)?;
-    assert_eq!(share["owner"], "rathi");
-    assert_eq!(share["path"], "/test.txt");
-    assert_eq!(share["editable"], true);
-    assert_eq!(share["is_dir"], false);
-    let detail = server
-        .url()
-        .join(&format!("{API}/{}", share["id"].as_str().unwrap()))?;
     assert_eq!(
         client
-            .get(detail.clone())
-            .basic_auth("rathi", Some("secret"))
-            .send()?
-            .status(),
-        200
-    );
-    let list: Value = serde_json::from_str(
-        &client
             .get(url.clone())
-            .basic_auth("rathi", Some("secret"))
-            .send()?
-            .text()?,
-    )?;
-    assert_eq!(list.as_array().unwrap().len(), 1);
-    let other: Value = serde_json::from_str(
-        &client
-            .get(url.clone())
-            .basic_auth("other", Some("secret"))
-            .send()?
-            .text()?,
-    )?;
-    assert_eq!(other, json!([]));
-    assert_eq!(
-        client
-            .get(detail.clone())
-            .basic_auth("other", Some("secret"))
+            .basic_auth("owner", Some("secret"))
             .send()?
             .status(),
-        404
+        405
     );
-    assert_eq!(
-        client
-            .delete(detail.clone())
-            .basic_auth("other", Some("secret"))
-            .send()?
-            .status(),
-        404
-    );
-    assert_eq!(
-        client
-            .delete(detail.clone())
-            .basic_auth("rathi", Some("secret"))
-            .send()?
-            .status(),
-        204
-    );
-    assert_eq!(
-        client
-            .get(detail)
-            .basic_auth("rathi", Some("secret"))
-            .send()?
-            .status(),
-        404
-    );
-    assert_eq!(
-        std::fs::read_to_string(server.path().join("test.txt"))?,
-        "This is test.txt"
-    );
-    assert!(database.is_file());
-    Ok(())
-}
 
-#[test]
-fn share_requests_respect_paths_and_permissions() -> Result<(), Error> {
-    let state = assert_fs::TempDir::new()?;
-    let database = state.path().join("shares.db");
-    let server = TestServer::start(
-        tmpdir(),
-        0,
-        [
-            "--bind",
-            "127.0.0.1",
-            "--share-db",
-            database.to_str().unwrap(),
-            "--auth",
-            "rathi:secret@/:rw,/dir1:ro",
-            "--allow-upload",
-            "--allow-delete",
-        ],
-    )?;
-    let client = client();
-    let url = server.url().join(API)?;
-    for (body, status) in [
-        (json!({"path":"/../shares.db"}), 400),
-        (json!({"path":"/missing.txt"}), 403),
-        (json!({"path":"/test.txt","owner":"other"}), 400),
-        (json!({"path":"/test.txt","expires_at":1}), 400),
-        (json!({"path":"/dir1/test.txt","editable":true}), 403),
-        (json!({"path":"/dir1"}), 201),
+    for body in [
+        json!({"path": "/dir1"}),
+        json!({"path": "/../test.txt"}),
+        json!({"path": "/missing.txt"}),
+        json!({"path": "/test.txt", "expires_in": 0}),
+        json!({"path": "/test.txt", "expires_in": u64::MAX}),
+        json!({"path": "/test.txt", "editable": true}),
     ] {
         let response = client
             .post(url.clone())
-            .basic_auth("rathi", Some("secret"))
+            .basic_auth("owner", Some("secret"))
             .header("Content-Type", "application/json")
             .body(body.to_string())
             .send()?;
-        assert_eq!(response.status().as_u16(), status, "{body}");
+        assert_eq!(response.status(), 400, "{body}");
     }
+    let response = client
+        .post(url.clone())
+        .basic_auth("owner", Some("secret"))
+        .header("Content-Type", "application/json")
+        .header("Origin", "https://elsewhere.example")
+        .body(r#"{"path":"/test.txt"}"#)
+        .send()?;
+    assert_eq!(response.status(), 403);
+
+    let response = client
+        .post(url)
+        .basic_auth("owner", Some("secret"))
+        .header("Content-Type", "application/json")
+        .body("x".repeat(16_385))
+        .send()?;
+    assert_eq!(response.status(), 413);
+    Ok(())
+}
+
+#[test]
+fn unicode_paths_and_links_survive_a_server_restart() -> Result<(), Error> {
+    let (first, state) = server()?;
+    let (link, _) = create(&first, "/😀.bin")?;
+    drop(first);
+    drop(state);
+
+    let (second, _state) = server()?;
+    let public = Url::parse(link["url"].as_str().unwrap())?;
+    let url = second
+        .url()
+        .join(&format!("{}?{}", public.path(), public.query().unwrap()))?;
     assert_eq!(
-        client
-            .post(url.clone())
-            .basic_auth("rathi", Some("secret"))
-            .header("Content-Type", "application/json")
-            .header("Origin", "https://other.example")
-            .body(json!({"path":"/test.txt"}).to_string())
-            .send()?
-            .status(),
-        403
-    );
-    assert_eq!(
-        client
-            .post(url)
-            .basic_auth("rathi", Some("secret"))
-            .body(json!({"path":"/test.txt"}).to_string())
-            .send()?
-            .status(),
-        415
+        Client::new().get(url).send()?.bytes()?.as_ref(),
+        b"bin\0\x00123"
     );
     Ok(())
 }
 
 #[test]
-fn share_database_cannot_be_served() -> Result<(), Error> {
-    let root = tmpdir();
-    let database = root.path().join("shares.db");
-    let result = TestServer::start(
-        root,
-        0,
-        [
-            "--share-db",
-            database.to_str().unwrap(),
-            "--auth",
-            "rathi:secret@/:rw",
-        ],
-    );
-    assert!(result.is_err());
-    let state = assert_fs::TempDir::new()?;
-    state.child("shares.db").touch()?;
-    let result = TestServer::start(
-        tmpdir(),
-        0,
-        [
-            "--share-db",
-            state.path().join("shares.db").to_str().unwrap(),
-        ],
-    );
-    assert!(result.is_err());
+fn changing_a_shared_path_to_an_escaping_symlink_is_rejected() -> Result<(), Error> {
+    use std::os::unix::fs::symlink;
+
+    let (server, state) = server()?;
+    let outside = state.child("private.txt");
+    outside.write_str("outside the served root")?;
+    let (_, url) = create(&server, "/test.txt")?;
+
+    fs::remove_file(server.path().join("test.txt"))?;
+    symlink(outside.path(), server.path().join("test.txt"))?;
+    assert_eq!(Client::new().get(url).send()?.status(), 404);
     Ok(())
 }
