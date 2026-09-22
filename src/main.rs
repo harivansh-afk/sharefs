@@ -50,8 +50,9 @@ async fn main() -> Result<()> {
     let (new_addrs, print_addrs) = check_addrs(&args)?;
     args.addrs = new_addrs;
     let running = Arc::new(AtomicBool::new(true));
+    let listeners = bind_listeners(&mut args)?;
     let listening = print_listening(&args, &print_addrs)?;
-    let handles = serve(args, running.clone())?;
+    let handles = serve(args, listeners, running.clone())?;
     println!("{listening}");
 
     tokio::select! {
@@ -70,19 +71,58 @@ async fn main() -> Result<()> {
     }
 }
 
-fn serve(args: Args, running: Arc<AtomicBool>) -> Result<Vec<JoinHandle<()>>> {
-    let addrs = args.addrs.clone();
-    let port = args.port;
+enum Listener {
+    Tcp(TcpListener),
+    #[cfg(unix)]
+    Unix(tokio::net::UnixListener),
+}
+
+fn bind_listeners(args: &mut Args) -> Result<Vec<Listener>> {
+    let mut listeners = Vec::new();
+    for address in &args.addrs {
+        match address {
+            BindAddr::IpAddr(ip) => {
+                let listener = create_listener(SocketAddr::new(*ip, args.port))
+                    .with_context(|| format!("Failed to bind `{ip}:{}`", args.port))?;
+                if args.port == 0 {
+                    args.port = listener.local_addr()?.port();
+                }
+                listeners.push(Listener::Tcp(listener));
+            }
+            #[cfg(unix)]
+            BindAddr::SocketPath(path) => {
+                let socket_path = if path.starts_with("@")
+                    && cfg!(any(target_os = "linux", target_os = "android"))
+                {
+                    let mut path_buf = path.as_bytes().to_vec();
+                    path_buf[0] = b'\0';
+                    unsafe { std::ffi::OsStr::from_encoded_bytes_unchecked(&path_buf) }
+                        .to_os_string()
+                } else {
+                    let _ = std::fs::remove_file(path);
+                    path.into()
+                };
+                let listener = tokio::net::UnixListener::bind(socket_path)
+                    .with_context(|| format!("Failed to bind `{path}`"))?;
+                listeners.push(Listener::Unix(listener));
+            }
+        }
+    }
+    Ok(listeners)
+}
+
+fn serve(
+    args: Args,
+    listeners: Vec<Listener>,
+    running: Arc<AtomicBool>,
+) -> Result<Vec<JoinHandle<()>>> {
     let tls_config = (args.tls_cert.clone(), args.tls_key.clone());
     let server_handle = Arc::new(Server::init(args, running)?);
     let mut handles = vec![];
-    for bind_addr in addrs.iter() {
+    for listener in listeners {
         let server_handle = server_handle.clone();
-        match bind_addr {
-            BindAddr::IpAddr(ip) => {
-                let listener = create_listener(SocketAddr::new(*ip, port))
-                    .with_context(|| format!("Failed to bind `{ip}:{port}`"))?;
-
+        match listener {
+            Listener::Tcp(listener) => {
                 match &tls_config {
                     #[cfg(feature = "tls")]
                     (Some(cert_file), Some(key_file)) => {
@@ -142,20 +182,7 @@ fn serve(args: Args, running: Arc<AtomicBool>) -> Result<Vec<JoinHandle<()>>> {
                 };
             }
             #[cfg(unix)]
-            BindAddr::SocketPath(path) => {
-                let socket_path = if path.starts_with("@")
-                    && cfg!(any(target_os = "linux", target_os = "android"))
-                {
-                    let mut path_buf = path.as_bytes().to_vec();
-                    path_buf[0] = b'\0';
-                    unsafe { std::ffi::OsStr::from_encoded_bytes_unchecked(&path_buf) }
-                        .to_os_string()
-                } else {
-                    let _ = std::fs::remove_file(path);
-                    path.into()
-                };
-                let listener = tokio::net::UnixListener::bind(socket_path)
-                    .with_context(|| format!("Failed to bind `{path}`"))?;
+            Listener::Unix(listener) => {
                 let handle = tokio::spawn(async move {
                     loop {
                         let Ok((stream, _addr)) = listener.accept().await else {
@@ -165,7 +192,6 @@ fn serve(args: Args, running: Arc<AtomicBool>) -> Result<Vec<JoinHandle<()>>> {
                         tokio::spawn(handle_stream(server_handle.clone(), stream, None));
                     }
                 });
-
                 handles.push(handle);
             }
         }

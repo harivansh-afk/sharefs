@@ -3,9 +3,12 @@ use assert_fs::prelude::*;
 use port_check::free_local_port;
 use reqwest::Url;
 use rstest::fixture;
+use std::io::{BufRead, BufReader};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream};
 use std::process::{Child, Command, Stdio};
+use std::sync::mpsc;
 use std::thread::sleep;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 #[allow(dead_code)]
@@ -118,34 +121,19 @@ pub fn port() -> u16 {
     free_local_port().expect("Couldn't find a free local port")
 }
 
-/// Run sharefs as a server; Start with a temporary directory, a free port and some
-/// optional arguments then wait for a while for the server setup to complete.
+/// Start an isolated server and wait for its own listening announcement.
 #[fixture]
 #[allow(dead_code)]
 pub fn server<I>(#[default(&[] as &[&str])] args: I) -> TestServer
 where
-    I: IntoIterator + Clone,
+    I: IntoIterator,
     I::Item: AsRef<std::ffi::OsStr>,
 {
-    let port = port();
-    let tmpdir = tmpdir();
-    let child = Command::new(assert_cmd::cargo::cargo_bin!())
-        .arg(tmpdir.path())
-        .arg("-p")
-        .arg(port.to_string())
-        .args(args.clone())
-        .stdout(Stdio::null())
-        .spawn()
-        .expect("Couldn't run test binary");
-    let is_tls = args
-        .into_iter()
-        .any(|x| x.as_ref().to_str().unwrap().contains("tls"));
-
-    wait_for_port(port);
-    TestServer::new(port, tmpdir, child, is_tls)
+    TestServer::start(tmpdir(), 0, args).expect("server startup failed")
 }
 
 /// Wait a max of 2s for the port to become available.
+#[allow(dead_code)]
 pub fn wait_for_port(port: u16) {
     let start_wait = Instant::now();
     let addresses = [
@@ -171,17 +159,62 @@ pub struct TestServer {
     tmpdir: TempDir,
     child: Child,
     is_tls: bool,
+    output_reader: Option<JoinHandle<()>>,
 }
 
 #[allow(dead_code)]
 impl TestServer {
-    pub fn new(port: u16, tmpdir: TempDir, child: Child, is_tls: bool) -> Self {
-        Self {
-            port,
+    pub fn start<I>(tmpdir: TempDir, port: u16, args: I) -> Result<Self, Error>
+    where
+        I: IntoIterator,
+        I::Item: AsRef<std::ffi::OsStr>,
+    {
+        let mut child = Command::new(assert_cmd::cargo::cargo_bin!())
+            .arg(tmpdir.path())
+            .arg("--port")
+            .arg(port.to_string())
+            .args(args)
+            .stdout(Stdio::piped())
+            .spawn()?;
+        let stdout = child.stdout.take().expect("child stdout was piped");
+        let (ready, receive) = mpsc::sync_channel(1);
+        let output_reader = thread::spawn(move || {
+            let mut reported = false;
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                if reported {
+                    continue;
+                }
+                let text = line
+                    .trim()
+                    .strip_prefix("Listening on ")
+                    .unwrap_or(line.trim());
+                if let Ok(url) = Url::parse(text) {
+                    if let Some(port) = url.port_or_known_default() {
+                        let _ = ready.send((port, url.scheme() == "https"));
+                        reported = true;
+                    }
+                }
+            }
+        });
+        let mut server = Self {
+            port: 0,
             tmpdir,
             child,
-            is_tls,
+            is_tls: false,
+            output_reader: Some(output_reader),
+        };
+        let (port, is_tls) = receive
+            .recv_timeout(Duration::from_secs(5))
+            .map_err(|error| format!("server did not announce a listening address: {error}"))?;
+        if port == 0 {
+            return Err("server announced port zero".into());
         }
+        if let Some(status) = server.child.try_wait()? {
+            return Err(format!("server exited during startup: {status}").into());
+        }
+        server.port = port;
+        server.is_tls = is_tls;
+        Ok(server)
     }
 
     pub fn url(&self) -> Url {
@@ -200,7 +233,10 @@ impl TestServer {
 
 impl Drop for TestServer {
     fn drop(&mut self) {
-        self.child.kill().expect("Couldn't kill test server");
-        self.child.wait().unwrap();
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        if let Some(reader) = self.output_reader.take() {
+            let _ = reader.join();
+        }
     }
 }
