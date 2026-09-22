@@ -166,7 +166,9 @@ fn move_file(#[with(&["-A"])] server: TestServer) -> Result<(), Error> {
 }
 
 #[rstest]
-fn move_not_allow_upload(#[with(&["--allow-delete"])] server: TestServer) -> Result<(), Error> {
+fn editing_does_not_allow_rename(
+    #[with(&["--allow-edit"])] server: TestServer,
+) -> Result<(), Error> {
     let origin_url = format!("{}test.html", server.url());
     let new_url = format!("{}test2.html", server.url());
     let resp = fetch!(b"MOVE", &origin_url)
@@ -177,7 +179,9 @@ fn move_not_allow_upload(#[with(&["--allow-delete"])] server: TestServer) -> Res
 }
 
 #[rstest]
-fn move_not_allow_delete(#[with(&["--allow-upload"])] server: TestServer) -> Result<(), Error> {
+fn uploading_does_not_allow_rename(
+    #[with(&["--allow-upload"])] server: TestServer,
+) -> Result<(), Error> {
     let origin_url = format!("{}test.html", server.url());
     let new_url = format!("{}test2.html", server.url());
     let resp = fetch!(b"MOVE", &origin_url)
@@ -224,5 +228,54 @@ fn unlock_file(#[with(&["-A"])] server: TestServer) -> Result<(), Error> {
 fn unlock_file_404(#[with(&["-A"])] server: TestServer) -> Result<(), Error> {
     let resp = fetch!(b"LOCK", format!("{}404", server.url())).send()?;
     assert_eq!(resp.status(), 404);
+    Ok(())
+}
+
+#[rstest]
+fn rename_permission_is_independent_of_upload_and_edit(
+    #[with(&["--allow-rename"])] server: TestServer,
+) -> Result<(), Error> {
+    let source = server.url().join("test.txt")?;
+    let destination = server.url().join("renamed.txt")?;
+    let response = fetch!(b"MOVE", source.clone())
+        .header("Destination", destination.as_str())
+        .send()?;
+    assert_eq!(response.status(), 204);
+    assert_eq!(
+        reqwest::blocking::get(destination)?.text()?,
+        "This is test.txt"
+    );
+    assert_eq!(reqwest::blocking::get(source)?.status(), 404);
+    Ok(())
+}
+
+#[rstest]
+fn rename_cannot_replace_an_existing_file(
+    #[with(&["-A"])] server: TestServer,
+) -> Result<(), Error> {
+    let source = server.url().join("test.txt")?;
+    let destination = server.url().join("index.html")?;
+    let response = fetch!(b"MOVE", source.clone())
+        .header("Destination", destination.as_str())
+        .send()?;
+    assert_eq!(response.status(), 409);
+    assert_eq!(reqwest::blocking::get(source)?.text()?, "This is test.txt");
+    assert_eq!(
+        reqwest::blocking::get(destination)?.text()?,
+        "This is index.html"
+    );
+    Ok(())
+}
+
+#[rstest]
+fn rename_stays_in_the_same_directory(#[with(&["-A"])] server: TestServer) -> Result<(), Error> {
+    let source = server.url().join("test.txt")?;
+    let destination = server.url().join("dir1/moved.txt")?;
+    let response = fetch!(b"MOVE", source.clone())
+        .header("Destination", destination.as_str())
+        .send()?;
+    assert_eq!(response.status(), 400);
+    assert_eq!(reqwest::blocking::get(source)?.status(), 200);
+    assert_eq!(reqwest::blocking::get(destination)?.status(), 404);
     Ok(())
 }

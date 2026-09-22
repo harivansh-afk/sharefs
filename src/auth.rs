@@ -110,6 +110,12 @@ impl AccessControl {
         !self.users.is_empty()
     }
 
+    pub fn is_owner(&self, user: &str) -> bool {
+        self.users
+            .get(user)
+            .is_some_and(|(_, paths)| paths.perm().readwrite())
+    }
+
     pub fn guard(
         &self,
         path: &str,

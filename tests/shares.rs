@@ -28,7 +28,7 @@ fn server() -> Result<(TestServer, assert_fs::TempDir), Error> {
             "--auth",
             "owner:secret@/:rw|reader:secret@/",
             "--allow-upload",
-            "--allow-delete",
+            "--allow-edit",
         ],
     )?;
     Ok((server, state))

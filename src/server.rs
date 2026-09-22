@@ -57,6 +57,7 @@ pub type Response = hyper::Response<BoxBody<Bytes, anyhow::Error>>;
 const INDEX_HTML: &str = include_str!("../assets/index.html");
 const INDEX_CSS: &str = include_str!("../assets/index.css");
 const INDEX_JS: &str = include_str!("../assets/index.js");
+const ACTIONS_JS: &str = include_str!("../assets/actions.js");
 const FAVICON_ICO: &[u8] = include_bytes!("../assets/favicon.ico");
 const INDEX_NAME: &str = "index.html";
 const BUF_SIZE: usize = 65536;
@@ -273,7 +274,7 @@ impl Server {
         };
 
         let allow_upload = self.args.allow_upload;
-        let allow_delete = self.args.allow_delete;
+        let allow_edit = self.args.allow_edit;
         let allow_search = self.args.allow_search;
         let allow_archive = self.args.allow_archive;
         let render_index = self.args.render_index;
@@ -364,11 +365,25 @@ impl Server {
                     if has_query_flag(&query_params, "json") {
                         self.handle_file_json(path, head_only, &mut res).await?;
                     } else if has_query_flag(&query_params, "edit") {
-                        self.handle_edit_file(path, DataKind::Edit, head_only, user, &mut res)
-                            .await?;
+                        self.handle_edit_file(
+                            path,
+                            DataKind::Edit,
+                            head_only,
+                            access_paths.perm().readwrite(),
+                            user,
+                            &mut res,
+                        )
+                        .await?;
                     } else if has_query_flag(&query_params, "view") {
-                        self.handle_edit_file(path, DataKind::View, head_only, user, &mut res)
-                            .await?;
+                        self.handle_edit_file(
+                            path,
+                            DataKind::View,
+                            head_only,
+                            access_paths.perm().readwrite(),
+                            user,
+                            &mut res,
+                        )
+                        .await?;
                     } else if has_query_flag(&query_params, "hash") {
                         if self.args.allow_hash {
                             self.handle_hash_file(path, head_only, &mut res).await?;
@@ -402,7 +417,7 @@ impl Server {
                 set_webdav_headers(&mut res);
             }
             Method::PUT => {
-                if is_dir || !allow_upload || (!allow_delete && size > 0) {
+                if is_dir || (if is_miss { !allow_upload } else { !allow_edit }) {
                     status_forbid(&mut res);
                 } else {
                     self.handle_upload(path, None, size, req, &mut res).await?;
@@ -411,7 +426,7 @@ impl Server {
             Method::PATCH => {
                 if is_miss {
                     status_not_found(&mut res);
-                } else if !allow_upload {
+                } else if !allow_edit {
                     status_forbid(&mut res);
                 } else {
                     let offset = match parse_upload_offset(headers, size) {
@@ -423,10 +438,6 @@ impl Server {
                     };
                     match offset {
                         Some(offset) => {
-                            if offset < size && !allow_delete {
-                                status_forbid(&mut res);
-                                return Ok(res);
-                            }
                             self.handle_upload(path, Some(offset), size, req, &mut res)
                                 .await?;
                         }
@@ -436,15 +447,7 @@ impl Server {
                     }
                 }
             }
-            Method::DELETE => {
-                if !allow_delete {
-                    status_forbid(&mut res);
-                } else if !is_miss {
-                    self.handle_delete(path, is_dir, &mut res).await?
-                } else {
-                    status_not_found(&mut res);
-                }
-            }
+            Method::DELETE => status_forbid(&mut res),
             method => match method.as_str() {
                 "PROPFIND" => {
                     if is_dir {
@@ -481,7 +484,7 @@ impl Server {
                     }
                 }
                 "COPY" => {
-                    if !allow_upload {
+                    if !allow_upload || !allow_edit {
                         status_forbid(&mut res);
                     } else if is_miss {
                         status_not_found(&mut res);
@@ -490,7 +493,7 @@ impl Server {
                     }
                 }
                 "MOVE" => {
-                    if !allow_upload || !allow_delete {
+                    if !self.args.allow_rename {
                         status_forbid(&mut res);
                     } else if is_miss {
                         status_not_found(&mut res);
@@ -563,16 +566,6 @@ impl Server {
 
         *res.status_mut() = status;
 
-        Ok(())
-    }
-
-    async fn handle_delete(&self, path: &Path, is_dir: bool, res: &mut Response) -> Result<()> {
-        match is_dir {
-            true => fs::remove_dir_all(path).await?,
-            false => fs::remove_file(path).await?,
-        }
-
-        status_no_content(res);
         Ok(())
     }
 
@@ -820,8 +813,12 @@ impl Server {
                     }
                 }
                 None => match name {
-                    "index.js" => {
-                        *res.body_mut() = body_full(INDEX_JS);
+                    "index.js" | "actions.js" => {
+                        *res.body_mut() = body_full(if name == "index.js" {
+                            INDEX_JS
+                        } else {
+                            ACTIONS_JS
+                        });
                         res.headers_mut().insert(
                             "content-type",
                             HeaderValue::from_static("application/javascript; charset=UTF-8"),
@@ -1208,6 +1205,7 @@ impl Server {
         path: &Path,
         kind: DataKind,
         head_only: bool,
+        readwrite: bool,
         user: Option<String>,
         res: &mut Response,
     ) -> Result<()> {
@@ -1226,7 +1224,12 @@ impl Server {
             kind,
             uri_prefix: self.args.uri_prefix.clone(),
             allow_upload: self.args.allow_upload,
-            allow_delete: self.args.allow_delete,
+            allow_edit: self.args.allow_edit && readwrite,
+            allow_rename: self.args.allow_rename && readwrite,
+            allow_share: self.sharing.is_some()
+                && user
+                    .as_deref()
+                    .is_some_and(|user| self.args.auth.is_owner(user)),
             auth: self.args.auth.has_users(),
             user,
             editable,
@@ -1365,14 +1368,34 @@ impl Server {
             }
         };
 
-        ensure_path_parent(&dest).await?;
-
-        if self.guard_root_contained(&dest).await {
-            status_bad_request(res, "Invalid Destination");
+        if path.parent() != dest.parent() || path == dest {
+            status_bad_request(res, "Rename must stay in the same directory");
             return Ok(());
         }
 
-        fs::rename(path, &dest).await?;
+        #[cfg(target_os = "linux")]
+        {
+            let source = path.to_owned();
+            let result = tokio::task::spawn_blocking(move || {
+                use rustix::fs::{renameat_with, RenameFlags, CWD};
+                renameat_with(CWD, source, CWD, dest, RenameFlags::NOREPLACE)
+            })
+            .await?;
+            match result {
+                Ok(()) => {}
+                Err(rustix::io::Errno::EXIST) => {
+                    *res.status_mut() = StatusCode::CONFLICT;
+                    *res.body_mut() = body_full("A file with that name already exists");
+                    return Ok(());
+                }
+                Err(error) => return Err(io::Error::from(error).into()),
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            *res.status_mut() = StatusCode::NOT_IMPLEMENTED;
+            return Ok(());
+        }
 
         status_no_content(res);
         Ok(())
@@ -1480,7 +1503,12 @@ impl Server {
             href,
             uri_prefix: self.args.uri_prefix.clone(),
             allow_upload: self.args.allow_upload && readwrite,
-            allow_delete: self.args.allow_delete && readwrite,
+            allow_edit: self.args.allow_edit && readwrite,
+            allow_rename: self.args.allow_rename && readwrite,
+            allow_share: self.sharing.is_some()
+                && user
+                    .as_deref()
+                    .is_some_and(|user| self.args.auth.is_owner(user)),
             allow_search: self.args.allow_search,
             allow_archive: self.args.allow_archive,
             dir_exists: exist,
@@ -1739,7 +1767,9 @@ pub struct IndexData {
     pub kind: DataKind,
     pub uri_prefix: String,
     pub allow_upload: bool,
-    pub allow_delete: bool,
+    pub allow_edit: bool,
+    pub allow_rename: bool,
+    pub allow_share: bool,
     pub allow_search: bool,
     pub allow_archive: bool,
     pub dir_exists: bool,
@@ -1869,7 +1899,9 @@ struct EditData {
     kind: DataKind,
     uri_prefix: String,
     allow_upload: bool,
-    allow_delete: bool,
+    allow_edit: bool,
+    allow_rename: bool,
+    allow_share: bool,
     auth: bool,
     user: Option<String>,
     editable: bool,
@@ -2043,9 +2075,7 @@ fn is_hidden(hidden: &[String], file_name: &str, is_dir: bool) -> bool {
 fn set_webdav_headers(res: &mut Response) {
     res.headers_mut().insert(
         "Allow",
-        HeaderValue::from_static(
-            "GET,HEAD,PUT,OPTIONS,DELETE,PATCH,PROPFIND,COPY,MOVE,CHECKAUTH,LOGOUT",
-        ),
+        HeaderValue::from_static("GET,HEAD,PUT,OPTIONS,PATCH,PROPFIND,COPY,MOVE,CHECKAUTH,LOGOUT"),
     );
     res.headers_mut()
         .insert("DAV", HeaderValue::from_static("1, 2, 3"));
