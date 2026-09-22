@@ -1,14 +1,14 @@
 # sharefs
 
-this is an attempt to handwrite an extremely memory efficient and performant
-file sharing platform
+this is an attempt to handwrite an extremely memory efficient and performant file sharing platform
+
 we use the tokio runtime for i/o 
+
 ```sh
 nix develop
 ```
 
-
-## Plan
+Plan
 
 1. Keep share permission and expiry decisions in a small Sans-I/O core.
 2. Use one authenticated API for the CLI and web Share controls.
