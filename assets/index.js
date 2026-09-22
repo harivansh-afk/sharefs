@@ -382,9 +382,6 @@ async function setupIndexPage() {
   renderPathsTableHead();
   renderPathsTableBody();
 
-  if (DATA.user) {
-    setupDownloadWithToken();
-  }
 }
 
 /**
@@ -552,33 +549,6 @@ async function setupAuth() {
       location.reload();
     });
   }
-}
-
-function setupDownloadWithToken() {
-  document.querySelectorAll("a.dlwt").forEach(link => {
-    link.addEventListener("click", async e => {
-      e.preventDefault();
-      try {
-        const link = e.currentTarget || e.target;
-        const originalHref = link.getAttribute("href");
-        const tokengenUrl = new URL(originalHref);
-        tokengenUrl.searchParams.set("tokengen", "");
-        const res = await fetch(tokengenUrl);
-        if (!res.ok) throw new Error("Failed to fetch token");
-        const token = await res.text();
-        const downloadUrl = new URL(originalHref);
-        downloadUrl.searchParams.set("token", token);
-        const tempA = document.createElement("a");
-        tempA.href = downloadUrl.toString();
-        tempA.download = "";
-        document.body.appendChild(tempA);
-        tempA.click();
-        document.body.removeChild(tempA);
-      } catch (err) {
-        alert(`Failed to download, ${err.message}`);
-      }
-    });
-  });
 }
 
 function setupSearch() {

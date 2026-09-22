@@ -2,13 +2,11 @@ use crate::{args::Args, server::Response, utils::unix_now};
 
 use anyhow::{anyhow, bail, Result};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use ed25519_dalek::{ed25519::signature::SignerMut, Signature, SigningKey};
 use headers::HeaderValue;
 use hyper::{header::WWW_AUTHENTICATE, Method};
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use md5::Context;
-use sha2::{Digest, Sha256};
 use sha_crypt::PasswordVerifier;
 use std::{
     collections::HashMap,
@@ -18,7 +16,6 @@ use uuid::Uuid;
 
 const REALM: &str = "sharefs";
 const DIGEST_AUTH_TIMEOUT: u32 = 60 * 60 * 24 * 7; // 7 days
-const TOKEN_EXPIRATION: u64 = 1000 * 60 * 60 * 24 * 3; // 3 days
 
 lazy_static! {
     static ref NONCESTARTHASH: Context = {
@@ -118,19 +115,10 @@ impl AccessControl {
         path: &str,
         method: &Method,
         authorization: Option<&HeaderValue>,
-        token: Option<&String>,
         guard_options: bool,
     ) -> (Option<String>, Option<AccessPaths>) {
         if self.empty {
             return (None, Some(AccessPaths::new(AccessPerm::ReadWrite)));
-        }
-
-        if method == Method::GET {
-            if let Some(token) = token {
-                if let Ok((user, ap)) = self.verify_token(token, path) {
-                    return (Some(user), ap.guard(path, method));
-                }
-            }
         }
 
         if let Some(authorization) = authorization {
@@ -157,53 +145,6 @@ impl AccessControl {
         }
 
         (None, None)
-    }
-
-    pub fn generate_token(&self, path: &str, user: &str) -> Result<String> {
-        let (pass, _) = self
-            .users
-            .get(user)
-            .ok_or_else(|| anyhow!("Not found user '{user}'"))?;
-        let exp = unix_now().as_millis() as u64 + TOKEN_EXPIRATION;
-        let message = format!("{path}:{exp}");
-        let mut signing_key = derive_secret_key(user, pass);
-        let sig = signing_key.sign(message.as_bytes()).to_bytes();
-
-        let mut raw = Vec::with_capacity(64 + 8 + user.len());
-        raw.extend_from_slice(&sig);
-        raw.extend_from_slice(&exp.to_be_bytes());
-        raw.extend_from_slice(user.as_bytes());
-
-        Ok(hex::encode(raw))
-    }
-
-    fn verify_token<'a>(&'a self, token: &str, path: &str) -> Result<(String, &'a AccessPaths)> {
-        let raw = hex::decode(token)?;
-
-        if raw.len() < 72 {
-            bail!("Invalid token");
-        }
-
-        let sig_bytes = &raw[..64];
-        let exp_bytes = &raw[64..72];
-        let user_bytes = &raw[72..];
-
-        let exp = u64::from_be_bytes(exp_bytes.try_into()?);
-        if unix_now().as_millis() as u64 > exp {
-            bail!("Token expired");
-        }
-
-        let user = std::str::from_utf8(user_bytes)?;
-        let (pass, ap) = self
-            .users
-            .get(user)
-            .ok_or_else(|| anyhow!("Not found user '{user}'"))?;
-
-        let sig = Signature::from_bytes(&<[u8; 64]>::try_from(sig_bytes)?);
-
-        let message = format!("{path}:{exp}");
-        derive_secret_key(user, pass).verify(message.as_bytes(), &sig)?;
-        Ok((user.to_string(), ap))
     }
 }
 
@@ -511,13 +452,6 @@ pub fn check_auth(
     } else {
         None
     }
-}
-
-fn derive_secret_key(user: &str, pass: &str) -> SigningKey {
-    let mut hasher = Sha256::new();
-    hasher.update(format!("{user}:{pass}").as_bytes());
-    let hash = hasher.finalize();
-    SigningKey::from_bytes(&hash.into())
 }
 
 /// Check if a nonce is still valid.

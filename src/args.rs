@@ -40,13 +40,30 @@ pub fn build_cli() -> Command {
                 .value_name("file"),
         )
         .arg(
-            Arg::new("share-db")
-                .env("SHAREFS_SHARE_DB")
+            Arg::new("share-key-file")
+                .env("SHAREFS_SHARE_KEY_FILE")
                 .hide_env(true)
-                .long("share-db")
+                .long("share-key-file")
                 .value_parser(value_parser!(PathBuf))
                 .value_name("PATH")
-                .help("Store share metadata outside the served directory"),
+                .help("Read the 32-byte share signing key from PATH"),
+        )
+        .arg(
+            Arg::new("public-url")
+                .env("SHAREFS_PUBLIC_URL")
+                .hide_env(true)
+                .long("public-url")
+                .value_name("URL")
+                .help("Public origin for share links"),
+        )
+        .arg(
+            Arg::new("control-socket")
+                .env("SHAREFS_CONTROL_SOCKET")
+                .hide_env(true)
+                .long("control-socket")
+                .value_parser(value_parser!(PathBuf))
+                .value_name("PATH")
+                .help("Listen for the local share client at PATH"),
         )
         .arg(
             Arg::new("bind")
@@ -283,7 +300,10 @@ pub struct Args {
     #[serde(default = "default_port")]
     #[default(default_port())]
     pub port: u16,
-    pub share_db: Option<PathBuf>,
+    pub share_key_file: Option<PathBuf>,
+    pub public_url: Option<String>,
+    pub control_socket: Option<PathBuf>,
+    pub share_roots: std::collections::BTreeMap<String, PathBuf>,
     #[serde(skip)]
     pub path_is_file: bool,
     pub path_prefix: String,
@@ -336,8 +356,14 @@ impl Args {
 
         args.serve_path = Self::sanitize_path(args.serve_path)?;
 
-        if let Some(path) = matches.get_one::<PathBuf>("share-db") {
-            args.share_db = Some(path.clone());
+        if let Some(path) = matches.get_one::<PathBuf>("share-key-file") {
+            args.share_key_file = Some(path.clone());
+        }
+        if let Some(url) = matches.get_one::<String>("public-url") {
+            args.public_url = Some(url.clone());
+        }
+        if let Some(path) = matches.get_one::<PathBuf>("control-socket") {
+            args.control_socket = Some(path.clone());
         }
 
         if let Some(port) = matches.get_one::<u16>("port") {

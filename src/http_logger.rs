@@ -36,7 +36,7 @@ impl HttpLogger {
             match element {
                 LogElement::Variable(name) => match name.as_str() {
                     "request" | "request_method" | "request_uri" => {
-                        let uri = req.uri().to_string();
+                        let uri = redact_token(req.uri());
                         let decoded_uri = decode_uri(&uri)
                             .map(|s| sanitize_log_value(&s))
                             .unwrap_or_else(|| uri.clone());
@@ -110,6 +110,24 @@ impl HttpLogger {
     }
 }
 
+fn redact_token(uri: &hyper::Uri) -> String {
+    let Some(query) = uri.query() else {
+        return uri.to_string();
+    };
+    let mut params = form_urlencoded::Serializer::new(String::new());
+    for (name, value) in form_urlencoded::parse(query.as_bytes()) {
+        params.append_pair(
+            &name,
+            if name == "token" {
+                "[redacted]"
+            } else {
+                &value
+            },
+        );
+    }
+    format!("{}?{}", uri.path(), params.finish())
+}
+
 /// Emit via the `log` crate with target `http_access` so the system logger
 /// prints the line verbatim (no extra timestamp/level prefix).
 fn emit_http_access(msg: &str, is_error: bool) {
@@ -168,4 +186,20 @@ fn sanitize_log_value(s: &str) -> String {
             c => vec![c],
         })
         .collect()
+}
+
+#[cfg(test)]
+mod token_tests {
+    use super::*;
+
+    #[test]
+    fn access_logs_do_not_include_bearer_tokens() {
+        let uri = "/file?token=secret&sort=name&token=another"
+            .parse()
+            .unwrap();
+        let redacted = redact_token(&uri);
+        assert!(!redacted.contains("secret"));
+        assert!(!redacted.contains("another"));
+        assert!(redacted.contains("sort=name"));
+    }
 }

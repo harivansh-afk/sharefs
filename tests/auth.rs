@@ -389,19 +389,3 @@ fn auth_anonymous_no_precedence(
 
     Ok(())
 }
-
-#[rstest]
-fn token_auth(#[with(&["-a", "user:pass@/"])] server: TestServer) -> Result<(), Error> {
-    let url = format!("{}index.html", server.url());
-    let resp = fetch!(b"GET", &url).send()?;
-    assert_eq!(resp.status(), 401);
-    let url = format!("{}index.html?tokengen", server.url());
-    let resp = fetch!(b"GET", &url)
-        .basic_auth("user", Some("pass"))
-        .send()?;
-    let token = resp.text()?;
-    let url = format!("{}index.html?token={token}", server.url());
-    let resp = fetch!(b"GET", &url).send()?;
-    assert_eq!(resp.status(), 200);
-    Ok(())
-}
