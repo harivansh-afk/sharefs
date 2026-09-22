@@ -13,4 +13,4 @@ jobs:
       - uses: actions/checkout@v4
       - run: nix develop --command cargo fmt --all --check
       - run: nix develop --command cargo clippy --locked --all-targets -- -D warnings
-      - run: nix develop --command cargo test --locked
+      - run: nix develop --command cargo test --locked -- --test-threads=1
