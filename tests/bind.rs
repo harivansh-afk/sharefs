@@ -8,6 +8,7 @@ use regex::Regex;
 use rstest::rstest;
 use std::io::Read;
 use std::process::{Command, Stdio};
+use std::time::Duration;
 
 #[rstest]
 #[case(&["-b", "20.205.243.166"])]
@@ -33,12 +34,22 @@ fn bind_ipv4_ipv6(
     #[case] bind_ipv4: bool,
     #[case] bind_ipv6: bool,
 ) -> Result<(), Error> {
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(2))
+        .timeout(Duration::from_secs(5))
+        .build()?;
     assert_eq!(
-        reqwest::blocking::get(format!("http://127.0.0.1:{}", server.port()).as_str()).is_ok(),
+        client
+            .get(format!("http://127.0.0.1:{}", server.port()))
+            .send()
+            .is_ok(),
         bind_ipv4
     );
     assert_eq!(
-        reqwest::blocking::get(format!("http://[::1]:{}", server.port()).as_str()).is_ok(),
+        client
+            .get(format!("http://[::1]:{}", server.port()))
+            .send()
+            .is_ok(),
         bind_ipv6
     );
 

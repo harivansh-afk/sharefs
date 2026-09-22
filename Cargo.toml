@@ -1,12 +1,12 @@
 [package]
-name = "dufs"
-version = "0.46.0"
+name = "sharefs"
+version = "0.1.0"
 edition = "2021"
-authors = ["sigoden <sigoden@gmail.com>"]
-description = "Dufs is a distinctive utility file server"
-license = "MIT OR Apache-2.0"
-homepage = "https://github.com/sigoden/dufs"
-repository = "https://github.com/sigoden/dufs"
+authors = ["sigoden <sigoden@gmail.com>", "Harivansh Rathi <rathiharivansh@gmail.com>"]
+description = "File sharing from your own filesystem"
+license = "MIT"
+homepage = "https://git.harivan.sh/harivansh-afk/sharefs"
+repository = "https://git.harivan.sh/harivansh-afk/sharefs"
 categories = ["command-line-utilities", "web-programming::http-server"]
 keywords = ["static", "file", "server", "webdav", "cli"]
 

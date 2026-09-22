@@ -24,14 +24,14 @@ pub fn build_cli() -> Command {
         ))
         .arg(
             Arg::new("serve-path")
-                .env("DUFS_SERVE_PATH")
+                .env("SHAREFS_SERVE_PATH")
 				.hide_env(true)
                 .value_parser(value_parser!(PathBuf))
                 .help("Specific path to serve [default: .]"),
         )
         .arg(
             Arg::new("config")
-                .env("DUFS_CONFIG")
+                .env("SHAREFS_CONFIG")
 				.hide_env(true)
                 .short('c')
                 .long("config")
@@ -41,7 +41,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("bind")
-                .env("DUFS_BIND")
+                .env("SHAREFS_BIND")
 				.hide_env(true)
                 .short('b')
                 .long("bind")
@@ -52,7 +52,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("port")
-                .env("DUFS_PORT")
+                .env("SHAREFS_PORT")
 				.hide_env(true)
                 .short('p')
                 .long("port")
@@ -62,7 +62,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("path-prefix")
-                .env("DUFS_PATH_PREFIX")
+                .env("SHAREFS_PATH_PREFIX")
 				.hide_env(true)
                 .long("path-prefix")
                 .value_name("path")
@@ -70,7 +70,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("hidden")
-                .env("DUFS_HIDDEN")
+                .env("SHAREFS_HIDDEN")
 				.hide_env(true)
                 .long("hidden")
                 .action(ArgAction::Append)
@@ -80,7 +80,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("auth")
-                .env("DUFS_AUTH")
+                .env("SHAREFS_AUTH")
 				.hide_env(true)
                 .short('a')
                 .long("auth")
@@ -91,7 +91,7 @@ pub fn build_cli() -> Command {
         .arg(
             Arg::new("auth-method")
                 .hide(true)
-                .env("DUFS_AUTH_METHOD")
+                .env("SHAREFS_AUTH_METHOD")
 				.hide_env(true)
                 .long("auth-method")
                 .help("Select auth method")
@@ -101,7 +101,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("allow-all")
-                .env("DUFS_ALLOW_ALL")
+                .env("SHAREFS_ALLOW_ALL")
 				.hide_env(true)
                 .short('A')
                 .long("allow-all")
@@ -110,7 +110,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("allow-upload")
-                .env("DUFS_ALLOW_UPLOAD")
+                .env("SHAREFS_ALLOW_UPLOAD")
 				.hide_env(true)
                 .long("allow-upload")
                 .action(ArgAction::SetTrue)
@@ -118,7 +118,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("allow-delete")
-                .env("DUFS_ALLOW_DELETE")
+                .env("SHAREFS_ALLOW_DELETE")
 				.hide_env(true)
                 .long("allow-delete")
                 .action(ArgAction::SetTrue)
@@ -126,7 +126,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("allow-search")
-                .env("DUFS_ALLOW_SEARCH")
+                .env("SHAREFS_ALLOW_SEARCH")
 				.hide_env(true)
                 .long("allow-search")
                 .action(ArgAction::SetTrue)
@@ -134,7 +134,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("allow-symlink")
-                .env("DUFS_ALLOW_SYMLINK")
+                .env("SHAREFS_ALLOW_SYMLINK")
 				.hide_env(true)
                 .long("allow-symlink")
                 .action(ArgAction::SetTrue)
@@ -142,7 +142,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("allow-archive")
-                .env("DUFS_ALLOW_ARCHIVE")
+                .env("SHAREFS_ALLOW_ARCHIVE")
 				.hide_env(true)
                 .long("allow-archive")
                 .action(ArgAction::SetTrue)
@@ -150,7 +150,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("allow-hash")
-                .env("DUFS_ALLOW_HASH")
+                .env("SHAREFS_ALLOW_HASH")
                 .hide_env(true)
                 .long("allow-hash")
                 .action(ArgAction::SetTrue)
@@ -158,7 +158,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("enable-cors")
-                .env("DUFS_ENABLE_CORS")
+                .env("SHAREFS_ENABLE_CORS")
 				.hide_env(true)
                 .long("enable-cors")
                 .action(ArgAction::SetTrue)
@@ -166,7 +166,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("render-index")
-                .env("DUFS_RENDER_INDEX")
+                .env("SHAREFS_RENDER_INDEX")
 				.hide_env(true)
                 .long("render-index")
                 .action(ArgAction::SetTrue)
@@ -174,7 +174,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("render-try-index")
-                .env("DUFS_RENDER_TRY_INDEX")
+                .env("SHAREFS_RENDER_TRY_INDEX")
 				.hide_env(true)
                 .long("render-try-index")
                 .action(ArgAction::SetTrue)
@@ -182,7 +182,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("render-spa")
-                .env("DUFS_RENDER_SPA")
+                .env("SHAREFS_RENDER_SPA")
 				.hide_env(true)
                 .long("render-spa")
                 .action(ArgAction::SetTrue)
@@ -190,7 +190,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("assets")
-                .env("DUFS_ASSETS")
+                .env("SHAREFS_ASSETS")
 				.hide_env(true)
                 .long("assets")
                 .help("Set the path to the assets directory for overriding the built-in assets")
@@ -199,7 +199,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("log-format")
-                .env("DUFS_LOG_FORMAT")
+                .env("SHAREFS_LOG_FORMAT")
                 .hide_env(true)
                 .long("log-format")
                 .value_name("format")
@@ -207,7 +207,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("log-file")
-                .env("DUFS_LOG_FILE")
+                .env("SHAREFS_LOG_FILE")
                 .hide_env(true)
                 .long("log-file")
                 .value_name("file")
@@ -216,7 +216,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("compress")
-                .env("DUFS_COMPRESS")
+                .env("SHAREFS_COMPRESS")
                 .hide_env(true)
                 .value_parser(clap::builder::EnumValueParser::<Compress>::new())
                 .long("compress")
@@ -235,7 +235,7 @@ pub fn build_cli() -> Command {
     let app = app
         .arg(
             Arg::new("tls-cert")
-                .env("DUFS_TLS_CERT")
+                .env("SHAREFS_TLS_CERT")
                 .hide_env(true)
                 .long("tls-cert")
                 .value_name("path")
@@ -244,7 +244,7 @@ pub fn build_cli() -> Command {
         )
         .arg(
             Arg::new("tls-key")
-                .env("DUFS_TLS_KEY")
+                .env("SHAREFS_TLS_KEY")
                 .hide_env(true)
                 .long("tls-key")
                 .value_name("path")

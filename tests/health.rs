@@ -4,7 +4,7 @@ mod utils;
 use fixtures::{server, Error, TestServer};
 use rstest::rstest;
 
-const HEALTH_CHECK_PATH: &str = "__dufs__/health";
+const HEALTH_CHECK_PATH: &str = "__sharefs__/health";
 const HEALTH_CHECK_RESPONSE: &str = r#"{"status":"OK"}"#;
 
 #[rstest]

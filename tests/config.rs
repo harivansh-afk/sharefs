@@ -22,22 +22,22 @@ fn use_config_file(tmpdir: TempDir, port: u16) -> Result<(), Error> {
 
     wait_for_port(port);
 
-    let url = format!("http://localhost:{port}/dufs/index.html");
+    let url = format!("http://localhost:{port}/sharefs/index.html");
     let resp = fetch!(b"GET", &url).send()?;
     assert_eq!(resp.status(), 401);
 
-    let url = format!("http://localhost:{port}/dufs/index.html");
+    let url = format!("http://localhost:{port}/sharefs/index.html");
     let resp = send_with_digest_auth(fetch!(b"GET", &url), "user", "pass")?;
     assert_eq!(resp.text()?, "This is index.html");
 
-    let url = format!("http://localhost:{port}/dufs?simple");
+    let url = format!("http://localhost:{port}/sharefs?simple");
     let resp = send_with_digest_auth(fetch!(b"GET", &url), "user", "pass")?;
     let text: String = resp.text().unwrap();
     assert!(text.split('\n').any(|c| c == "dir1/"));
     assert!(!text.split('\n').any(|c| c == "dir3/"));
     assert!(!text.split('\n').any(|c| c == "test.txt"));
 
-    let url = format!("http://localhost:{port}/dufs/dir1/upload.txt");
+    let url = format!("http://localhost:{port}/sharefs/dir1/upload.txt");
     let resp = send_with_digest_auth(fetch!(b"PUT", &url).body("Hello"), "user", "pass")?;
     assert_eq!(resp.status(), 201);
 

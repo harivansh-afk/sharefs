@@ -16,7 +16,7 @@ use std::{
 };
 use uuid::Uuid;
 
-const REALM: &str = "DUFS";
+const REALM: &str = "sharefs";
 const DIGEST_AUTH_TIMEOUT: u32 = 60 * 60 * 24 * 7; // 7 days
 const TOKEN_EXPIRATION: u64 = 1000 * 60 * 60 * 24 * 3; // 3 days
 
