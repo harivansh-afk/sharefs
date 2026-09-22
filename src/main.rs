@@ -5,6 +5,7 @@ mod http_utils;
 mod logger;
 mod noscript;
 mod server;
+mod shares;
 mod utils;
 
 #[macro_use]

@@ -40,6 +40,15 @@ pub fn build_cli() -> Command {
                 .value_name("file"),
         )
         .arg(
+            Arg::new("share-db")
+                .env("SHAREFS_SHARE_DB")
+                .hide_env(true)
+                .long("share-db")
+                .value_parser(value_parser!(PathBuf))
+                .value_name("PATH")
+                .help("Store share metadata outside the served directory"),
+        )
+        .arg(
             Arg::new("bind")
                 .env("SHAREFS_BIND")
 				.hide_env(true)
@@ -274,6 +283,7 @@ pub struct Args {
     #[serde(default = "default_port")]
     #[default(default_port())]
     pub port: u16,
+    pub share_db: Option<PathBuf>,
     #[serde(skip)]
     pub path_is_file: bool,
     pub path_prefix: String,
@@ -325,6 +335,10 @@ impl Args {
         }
 
         args.serve_path = Self::sanitize_path(args.serve_path)?;
+
+        if let Some(path) = matches.get_one::<PathBuf>("share-db") {
+            args.share_db = Some(path.clone());
+        }
 
         if let Some(port) = matches.get_one::<u16>("port") {
             args.port = *port
