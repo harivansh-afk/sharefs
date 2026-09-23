@@ -84,8 +84,24 @@ fn links_read_live_files_and_support_head_and_ranges() -> Result<(), Error> {
     assert_eq!(response.status(), 200);
     assert_eq!(response.text()?, "This is test.txt");
 
-    fs::write(server.path().join("test.txt"), "changed in place")?;
+    assert!(client
+        .put(server.url().join("test.txt")?)
+        .basic_auth("owner", Some("secret"))
+        .body("changed in place")
+        .send()?
+        .status()
+        .is_success());
     assert_eq!(client.get(url.clone()).send()?.text()?, "changed in place");
+    fs::write(server.path().join("replacement.txt"), "replaced atomically")?;
+    fs::rename(
+        server.path().join("replacement.txt"),
+        server.path().join("test.txt"),
+    )?;
+    let updated = client.get(url.clone()).send()?;
+    assert!(updated.headers()["cache-control"]
+        .to_str()?
+        .contains("no-store"));
+    assert_eq!(updated.text()?, "replaced atomically");
     assert_eq!(
         client
             .put(url.clone())
@@ -95,7 +111,7 @@ fn links_read_live_files_and_support_head_and_ranges() -> Result<(), Error> {
         403
     );
     assert_eq!(client.delete(url.clone()).send()?.status(), 403);
-    assert_eq!(client.get(url).send()?.text()?, "changed in place");
+    assert_eq!(client.get(url).send()?.text()?, "replaced atomically");
     Ok(())
 }
 

@@ -1,4 +1,4 @@
-export const icon = name => `<svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-${name}"/></svg>`;
+export const icon = name => `<svg class="action-icon" viewBox="0 0 256 256" aria-hidden="true"><use href="#icon-${name}"/></svg>`;
 
 export function setupActions(data) {
   const share = document.getElementById("share-popover");

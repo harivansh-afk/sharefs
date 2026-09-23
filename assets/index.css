@@ -17,7 +17,7 @@
 
 html {
   overscroll-behavior: none;
-  font-family: -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+  font-family: "Berkeley Mono", "TX-02", ui-monospace, monospace;
   line-height: 1.5;
   color: var(--text-primary);
 }
@@ -309,10 +309,11 @@ svg {
 .action-edit { grid-column: 2; }
 .action-download { grid-column: 3; }
 .action-rename { grid-column: 4; }
-.action-icon { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.action-icon { width: 1rem; height: 1rem; fill: currentColor; }
 .icon-definitions { position: absolute; width: 0; height: 0; overflow: hidden; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.breadcrumb .action-icon { height: 1rem; fill: none; vertical-align: middle; }
+.breadcrumb > .action-btn { color: var(--text-primary); }
+.breadcrumb .action-icon { height: 1rem; fill: currentColor; vertical-align: middle; }
 .shares-link { margin-right: 0.5rem; color: var(--text-primary); text-decoration: none; }
 .shares-link[aria-current="page"] { text-decoration: underline; text-underline-offset: 0.25em; }
 .shares-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
@@ -321,13 +322,15 @@ svg {
 .shares-table td:first-child { overflow-wrap: anywhere; padding-right: 1rem; }
 .shares-table td:first-child a { color: var(--text-primary); text-decoration: none; }
 .shares-table .col-created, .shares-table .col-expiry { width: 13rem; }
-.shares-table .col-actions { width: 4rem; }
+.shares-table .col-actions { width: 6rem; }
+.action-revoke { color: #d1242f; }
+@media (prefers-color-scheme: dark) { .action-revoke { color: #ff7b72; } }
 .shares-table .cell-actions { text-align: right; white-space: nowrap; }
 .shares-table time { font-variant-numeric: tabular-nums; }
 #shares-status { color: var(--text-secondary); font-size: 0.875rem; }
 #shares-copy-link { box-sizing: border-box; width: 100%; }
 
-button, input, select { font: inherit; color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 button, .action-btn { border: 0; border-radius: 0; background: transparent; }
 button:disabled { opacity: 0.55; cursor: default; }

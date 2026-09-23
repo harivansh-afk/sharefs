@@ -64,7 +64,31 @@ export async function setupShares(data) {
         open.rel = "noopener noreferrer";
         open.setAttribute("aria-label", `Open shared ${share.path}`);
         open.innerHTML = icon("open");
-        actions.append(copy, open);
+        const revoke = document.createElement("button");
+        revoke.type = "button";
+        revoke.className = "action-btn action-revoke";
+        revoke.setAttribute("aria-label", `Deactivate share for ${share.path}`);
+        revoke.innerHTML = icon("trash");
+        revoke.addEventListener("click", async () => {
+          revoke.disabled = true;
+          try {
+            const response = await fetch(data.uri_prefix + "__sharefs__/api/share", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ path: share.path, token: new URL(share.url).searchParams.get("token") }),
+            });
+            if (!response.ok) throw new Error(`Could not deactivate share (${response.status}). Try again.`);
+            fallback.hidden = true;
+            row.remove();
+            expireRows();
+            status.textContent = "Share deactivated.";
+          } catch (error) {
+            status.textContent = error.message;
+          } finally {
+            revoke.disabled = false;
+          }
+        });
+        actions.append(copy, open, revoke);
       }
       expireRows();
     } catch (error) {
