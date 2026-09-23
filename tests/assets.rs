@@ -172,3 +172,22 @@ fn asset_actions_module(server: TestServer) -> Result<(), Error> {
     assert!(response.text()?.contains("export function setupActions"));
     Ok(())
 }
+
+#[rstest]
+fn branded_icons_are_available_at_the_root_and_versioned_path(
+    server: TestServer,
+) -> Result<(), Error> {
+    for path in [
+        "icon.svg".to_owned(),
+        format!("__sharefs_v{}__/icon.svg", env!("CARGO_PKG_VERSION")),
+    ] {
+        let response = reqwest::blocking::get(server.url().join(&path)?)?;
+        assert_eq!(response.status(), 200);
+        assert_eq!(response.headers()["content-type"], "image/svg+xml");
+        assert_eq!(response.text()?, include_str!("../assets/icon.svg"));
+    }
+    let response = reqwest::blocking::get(server.url().join("favicon.ico")?)?;
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.headers()["content-type"], "image/x-icon");
+    Ok(())
+}

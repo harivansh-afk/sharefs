@@ -1,3 +1,4 @@
+mod digest_auth_util;
 mod fixtures;
 
 use std::{fs, os::unix::fs::PermissionsExt};
@@ -207,5 +208,23 @@ fn changing_a_shared_path_to_an_escaping_symlink_is_rejected() -> Result<(), Err
     fs::remove_file(server.path().join("test.txt"))?;
     symlink(outside.path(), server.path().join("test.txt"))?;
     assert_eq!(Client::new().get(url).send()?.status(), 404);
+    Ok(())
+}
+
+#[test]
+fn digest_authenticated_owner_can_share_a_file() -> Result<(), Error> {
+    let (server, _state) = server()?;
+    let request = Client::new()
+        .post(server.url().join(API)?)
+        .header("Content-Type", "application/json")
+        .body(json!({"path":"/test.txt"}).to_string());
+    let response = digest_auth_util::send_with_digest_auth(request, "owner", "secret")?;
+    assert_eq!(response.status(), 201);
+    let link: Value = serde_json::from_str(&response.text()?)?;
+    let public = Url::parse(link["url"].as_str().unwrap())?;
+    let url = server
+        .url()
+        .join(&format!("{}?{}", public.path(), public.query().unwrap()))?;
+    assert_eq!(reqwest::blocking::get(url)?.text()?, "This is test.txt");
     Ok(())
 }

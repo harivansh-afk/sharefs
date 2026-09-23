@@ -1,8 +1,9 @@
+export const icon = name => `<svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-${name}"/></svg>`;
+
 export function setupActions(data) {
-  const menu = document.getElementById("file-menu");
   const share = document.getElementById("share-popover");
   const rename = document.getElementById("rename-popover");
-  const panels = [menu, share, rename];
+  const panels = [share, rename];
   let context;
   let anchor;
   let selection = 0;
@@ -52,35 +53,37 @@ export function setupActions(data) {
     const index = button.dataset.index;
     const file = index === undefined ? null : data.paths[Number(index)];
     context = file ? {
-      name: file.name,
+      name: file.name.split("/").pop(),
       path: data.href.replace(/\/$/, "") + "/" + file.name,
-      isDir: file.path_type.endsWith("Dir"),
-    } : { name: data.href.split("/").pop(), path: data.href, isDir: false };
+    } : { name: data.href.split("/").pop(), path: data.href };
     anchor = button;
 
     if (button.dataset.action === "share") {
-      document.getElementById("share-name").textContent = context.name;
+      const copy = document.querySelector("#share-form button");
+      copy.innerHTML = icon("copy");
+      copy.setAttribute("aria-label", "Copy link");
       document.getElementById("share-status").textContent = "";
+      document.getElementById("share-link").value = "";
       document.getElementById("share-link").hidden = true;
       show(share);
     } else if (button.dataset.action === "rename") {
       showRename();
-    } else {
-      const download = document.getElementById("menu-download");
-      download.href = fileURL(context.path);
-      download.hidden = context.isDir;
-      document.getElementById("menu-rename").hidden = !data.allow_rename;
-      show(menu);
     }
   });
 
-  document.getElementById("menu-rename").addEventListener("click", showRename);
-  document.getElementById("menu-download").addEventListener("click", hidePanels);
   document.addEventListener("keydown", event => {
     if (event.key === "Escape" && panels.some(panel => panel.matches(":popover-open"))) {
       hidePanels();
       anchor?.focus();
     }
+  });
+
+  document.getElementById("share-expiry").addEventListener("change", () => {
+    const button = document.querySelector("#share-form button");
+    button.innerHTML = icon("copy");
+    button.setAttribute("aria-label", "Copy link");
+    document.getElementById("share-link").hidden = true;
+    document.getElementById("share-status").textContent = "";
   });
 
   document.getElementById("share-form").addEventListener("submit", async event => {
@@ -90,26 +93,29 @@ export function setupActions(data) {
     const path = context.path;
     const selected = selection;
     button.disabled = true;
-    status.textContent = "Creating link…";
+    status.textContent = "";
     try {
       const response = await fetch(data.uri_prefix + "__sharefs__/api/share", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path, expires_in: Number(document.getElementById("share-expiry").value) }),
       });
-      if (!response.ok) throw new Error(`Cannot share this file (${response.status})`);
+      if (!response.ok) throw new Error(`Share failed (${response.status})`);
       const link = await response.json();
       if (selected !== selection) return;
       const input = document.getElementById("share-link");
       input.value = link.url;
-      input.hidden = false;
       try {
         await navigator.clipboard.writeText(link.url);
-        status.textContent = `Copied. Expires ${new Date(link.expires_at * 1000).toLocaleString()}.`;
+        if (selected !== selection) return;
+        button.innerHTML = icon("check");
+        button.setAttribute("aria-label", "Copied");
       } catch {
+        if (selected !== selection) return;
+        input.hidden = false;
         input.focus();
         input.select();
-        status.textContent = "Link ready. Copy the selected URL.";
+        status.textContent = "Copy the selected link.";
       }
     } catch (error) {
       if (selected === selection) status.textContent = error.message;
@@ -128,18 +134,18 @@ export function setupActions(data) {
     const name = document.getElementById("rename-input").value;
     const path = context.path;
     if (!name || name === "." || name === ".." || /[/\\\0]/.test(name)) {
-      status.textContent = "Enter a file name without slashes.";
+      status.textContent = "Name cannot contain slashes.";
       return;
     }
     if (name === context.name) { hidePanels(); return; }
     const destination = fileURL(path.slice(0, path.lastIndexOf("/") + 1) + name);
     button.disabled = true;
-    status.textContent = "Renaming…";
+    status.textContent = "";
     try {
       const response = await fetch(fileURL(path), {
         method: "MOVE", headers: { Destination: destination, Overwrite: "F" },
       });
-      if (response.status === 409) throw new Error("A file with that name already exists.");
+      if (response.status === 409) throw new Error("Name already exists.");
       if (!response.ok) throw new Error(`Rename failed (${response.status}).`);
       if (data.kind === "Index") location.reload();
       else location.assign(destination + location.search);

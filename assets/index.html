@@ -8,25 +8,32 @@
     <meta http-equiv="refresh" content="0; url=?noscript">
   </noscript>
   <link rel="icon" type="image/x-icon" href="__ASSETS_PREFIX__favicon.ico">
+  <link rel="icon" type="image/svg+xml" href="__ASSETS_PREFIX__icon.svg">
   <link rel="modulepreload" href="__ASSETS_PREFIX__actions.js">
   <link rel="stylesheet" href="__ASSETS_PREFIX__index.css">
 </head>
 
 <body>
+  <svg class="icon-definitions" aria-hidden="true"><defs>
+    <symbol id="icon-share" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2m3 6a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2"/></symbol>
+    <symbol id="icon-edit" viewBox="0 0 24 24"><path d="m16 3 5 5-12 12-6 1 1-6Z M14 5l5 5"/></symbol>
+    <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></symbol>
+    <symbol id="icon-rename" viewBox="0 0 24 24"><path d="M10 3h4m-2 0v18m-2 0h4M7 7H3v10h4m10-10h4v10h-4"/></symbol>
+    <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="1"/><path d="M16 8V3H3v13h5"/></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4 10-10"/></symbol>
+    <symbol id="icon-upload" viewBox="0 0 24 24"><path d="M12 16V4m-5 5 5-5 5 5M4 16v5h16v-5"/></symbol>
+    <symbol id="icon-save" viewBox="0 0 24 24"><path d="M4 3h13l4 4v14H3V3Zm3 0v6h9V3M7 21v-8h10v8"/></symbol>
+    <symbol id="icon-logout" viewBox="0 0 24 24"><path d="M9 3H3v18h6m0-9h12m-4-4 4 4-4 4"/></symbol>
+    <symbol id="icon-login" viewBox="0 0 24 24"><path d="M15 3h6v18h-6M3 12h12m-4-4 4 4-4 4"/></symbol>
+  </defs></svg>
+
   <div class="head">
     <div class="breadcrumb"></div>
     <div class="toolbox">
-      <a href="" class="control download hidden" title="Download file" download="">
-        <svg width="16" height="16" viewBox="0 0 16 16">
-          <path
-            d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z" />
-          <path
-            d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z" />
-        </svg>
-      </a>
-      <button type="button" class="control rename-file hidden" data-action="rename" title="Rename file">Rename</button>
-      <button type="button" class="control share-file hidden" data-action="share" title="Share file">Share</button>
-      <button type="button" class="control upload-file hidden" title="Upload files" aria-label="Upload files">Upload</button>
+      <a class="control action-btn download hidden" aria-label="Download file" download><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-download"/></svg></a>
+      <button type="button" class="control action-btn rename-file hidden" data-action="rename" aria-label="Rename file"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-rename"/></svg></button>
+      <button type="button" class="control action-btn share-file hidden" data-action="share" aria-label="Share file"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-share"/></svg></button>
+      <button type="button" class="control action-btn upload-file hidden" aria-label="Upload files"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-upload"/></svg></button>
       <input type="file" id="file" aria-label="Upload files" multiple hidden>
     </div>
     <form class="searchbar hidden">
@@ -41,28 +48,9 @@
       <input type="submit" hidden />
     </form>
     <div class="toolbox-right">
-      <button type="button" class="login-btn hidden" title="Log in" aria-label="Log in">
-        <svg width="16" height="16" viewBox="0 0 16 16">
-          <path fill-rule="evenodd"
-            d="M6 3.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 0-1 0v2A1.5 1.5 0 0 0 6.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 14.5 2h-8A1.5 1.5 0 0 0 5 3.5v2a.5.5 0 0 0 1 0v-2z" />
-          <path fill-rule="evenodd"
-            d="M11.854 8.354a.5.5 0 0 0 0-.708l-3-3a.5.5 0 1 0-.708.708L10.293 7.5H1.5a.5.5 0 0 0 0 1h8.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3z" />
-        </svg>
-      </button>
-      <button type="button" class="logout-btn hidden" title="Log out" aria-label="Log out">
-        <svg width="16" height="16" viewBox="0 0 16 16">
-          <path fill-rule="evenodd" d="M10 3.5a.5.5 0 0 0-.5-.5h-8a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h8a.5.5 0 0 0 .5-.5v-2a.5.5 0 0 1 1 0v2A1.5 1.5 0 0 1 9.5 14h-8A1.5 1.5 0 0 1 0 12.5v-9A1.5 1.5 0 0 1 1.5 2h8A1.5 1.5 0 0 1 11 3.5v2a.5.5 0 0 1-1 0z"/>
-          <path fill-rule="evenodd" d="M4.146 8.354a.5.5 0 0 1 0-.708l3-3a.5.5 0 1 1 .708.708L5.707 7.5H14.5a.5.5 0 0 1 0 1H5.707l2.147 2.146a.5.5 0 0 1-.708.708z"/>
-        </svg>
-        <span class="user-name"></span>
-      </button>
-      <button type="button" class="save-btn hidden" title="Save file" aria-label="Save file">
-        <svg viewBox="0 0 1024 1024" width="24" height="24">
-          <path
-            d="M426.666667 682.666667v42.666666h170.666666v-42.666666h-170.666666z m-42.666667-85.333334h298.666667v128h42.666666V418.133333L605.866667 298.666667H298.666667v426.666666h42.666666v-128h42.666667z m260.266667-384L810.666667 379.733333V810.666667H213.333333V213.333333h430.933334zM341.333333 341.333333h85.333334v170.666667H341.333333V341.333333z"
-            p-id="8311"></path>
-        </svg>
-      </button>
+      <button type="button" class="action-btn login-btn hidden" aria-label="Log in"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-login"/></svg></button>
+      <button type="button" class="action-btn logout-btn hidden" aria-label="Log out"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-logout"/></svg><span class="user-name sr-only"></span></button>
+      <button type="button" class="action-btn save-btn hidden" aria-label="Save file"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-save"/></svg></button>
     </div>
   </div>
   <div class="main">
@@ -92,31 +80,23 @@
       <textarea id="editor" class="editor hidden" aria-label="Editor" cols="10"></textarea>
     </div>
   </div>
-  <div id="file-menu" class="action-popover" popover aria-label="File actions">
-    <a id="menu-download" download title="Download file">Download</a>
-    <button id="menu-rename" type="button" title="Rename without moving or replacing another file">Rename</button>
-  </div>
   <div id="share-popover" class="action-popover" popover>
     <form id="share-form">
-      <strong id="share-name"></strong>
-      <label for="share-expiry">Link expires after</label>
-      <select id="share-expiry">
+      <select id="share-expiry" aria-label="Link expires after">
         <option value="3600">1 hour</option>
         <option value="86400">1 day</option>
         <option value="604800" selected>7 days</option>
         <option value="2592000">30 days</option>
       </select>
-      <p>Anyone with the link can read this file.</p>
-      <button type="submit">Copy link</button>
+      <button type="submit" class="action-btn" aria-label="Copy link"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-copy"/></svg></button>
       <input id="share-link" aria-label="Share link" readonly hidden>
       <p id="share-status" role="status"></p>
     </form>
   </div>
   <div id="rename-popover" class="action-popover" popover>
     <form id="rename-form">
-      <label for="rename-input">New name</label>
-      <input id="rename-input" required autocomplete="off">
-      <button type="submit">Rename</button>
+      <input id="rename-input" aria-label="New name" required autocomplete="off">
+      <button type="submit" class="action-btn" aria-label="Rename"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-check"/></svg></button>
       <p id="rename-status" role="status"></p>
     </form>
   </div>

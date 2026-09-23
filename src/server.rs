@@ -58,6 +58,7 @@ const INDEX_HTML: &str = include_str!("../assets/index.html");
 const INDEX_CSS: &str = include_str!("../assets/index.css");
 const INDEX_JS: &str = include_str!("../assets/index.js");
 const ACTIONS_JS: &str = include_str!("../assets/actions.js");
+const ICON_SVG: &str = include_str!("../assets/icon.svg");
 const FAVICON_ICO: &[u8] = include_bytes!("../assets/favicon.ico");
 const INDEX_NAME: &str = "index.html";
 const BUF_SIZE: usize = 65536;
@@ -801,7 +802,11 @@ impl Server {
         headers: &HeaderMap<HeaderValue>,
         res: &mut Response,
     ) -> Result<bool> {
-        if let Some(name) = req_path.strip_prefix(&self.assets_prefix) {
+        let asset = match req_path {
+            "favicon.ico" | "icon.svg" => Some(req_path),
+            _ => req_path.strip_prefix(&self.assets_prefix),
+        };
+        if let Some(name) = asset {
             match self.args.assets.as_ref() {
                 Some(assets_path) => {
                     let path = assets_path.join(name);
@@ -830,6 +835,11 @@ impl Server {
                             "content-type",
                             HeaderValue::from_static("text/css; charset=UTF-8"),
                         );
+                    }
+                    "icon.svg" => {
+                        *res.body_mut() = body_full(ICON_SVG);
+                        res.headers_mut()
+                            .insert("content-type", HeaderValue::from_static("image/svg+xml"));
                     }
                     "favicon.ico" => {
                         *res.body_mut() = body_full(FAVICON_ICO);
@@ -1038,10 +1048,10 @@ impl Server {
             self.args
                 .auth
                 .guard("/", req.method(), req.headers().get(AUTHORIZATION), false);
-        if owner.is_none() {
+        let Some(owner) = owner else {
             self.auth_reject(&mut res)?;
             return Ok(res);
-        }
+        };
         if !paths.is_some_and(|paths| paths.perm().readwrite()) {
             status_forbid(&mut res);
             return Ok(res);
@@ -1086,7 +1096,6 @@ impl Server {
             *res.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
             return Ok(res);
         };
-        let authorization = req.headers().get(AUTHORIZATION).cloned();
         let body = match tokio::time::timeout(
             Duration::from_secs(5),
             Limited::new(req.into_body(), MAX_MESSAGE_BYTES as usize).collect(),
@@ -1107,13 +1116,7 @@ impl Server {
             status_bad_request(&mut res, "Invalid share request");
             return Ok(res);
         };
-        if self
-            .args
-            .auth
-            .guard(&request.path, &Method::GET, authorization.as_ref(), false)
-            .1
-            .is_none()
-        {
+        if !self.args.auth.can_read(&owner, &request.path) {
             status_forbid(&mut res);
             return Ok(res);
         }

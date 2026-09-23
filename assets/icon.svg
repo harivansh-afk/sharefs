@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <style>
+    .bg { fill: #ffffff; }
+    .fg { fill: #111; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #111; }
+      .fg { fill: #ececec; }
+    }
+  </style>
+  <rect class="bg" width="100" height="100" rx="8" ry="8"/>
+  <g class="fg" font-family="'Berkeley Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+     font-size="60" text-anchor="middle">
+    <text x="36.049" y="72.048">*</text>
+    <text x="64.049" y="72.048" transform="translate(64.049 49.548) skewX(-12) translate(-64.049 -49.548)">h</text>
+  </g>
+</svg>
