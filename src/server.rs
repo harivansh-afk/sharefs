@@ -174,7 +174,7 @@ impl Server {
         }
 
         if relative_path == SHARE_API_PATH {
-            return self.create_share(req).await;
+            return self.mutate_share(req).await;
         }
 
         if method == Method::GET
@@ -1125,7 +1125,7 @@ impl Server {
         Ok(res)
     }
 
-    async fn create_share(&self, req: Request) -> Result<Response> {
+    async fn mutate_share(&self, req: Request) -> Result<Response> {
         let mut res = Response::default();
         res.headers_mut().insert(
             "cache-control",
@@ -1148,8 +1148,10 @@ impl Server {
             status_forbid(&mut res);
             return Ok(res);
         }
-        if req.method() != Method::POST {
+        if !matches!(*req.method(), Method::POST | Method::DELETE) {
             *res.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
+            res.headers_mut()
+                .insert("allow", HeaderValue::from_static("POST, DELETE"));
             return Ok(res);
         }
         if let Some(origin) = req.headers().get("origin") {
@@ -1188,6 +1190,7 @@ impl Server {
             *res.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
             return Ok(res);
         };
+        let revoke = req.method() == Method::DELETE;
         let body = match tokio::time::timeout(
             Duration::from_secs(5),
             Limited::new(req.into_body(), MAX_MESSAGE_BYTES as usize).collect(),
@@ -1204,11 +1207,20 @@ impl Server {
                 return Ok(res);
             }
         };
-        let Ok(request) = serde_json::from_slice::<ShareRequest>(&body) else {
+        let request = if revoke {
+            serde_json::from_slice::<RevokeRequest>(&body).map(ShareMutation::Revoke)
+        } else {
+            serde_json::from_slice::<ShareRequest>(&body).map(ShareMutation::Create)
+        };
+        let Ok(request) = request else {
             status_bad_request(&mut res, "Invalid share request");
             return Ok(res);
         };
-        if !self.args.auth.can_read(&owner, &request.path) {
+        let path = match &request {
+            ShareMutation::Create(request) => &request.path,
+            ShareMutation::Revoke(request) => &request.path,
+        };
+        if !self.args.auth.can_read(&owner, path) {
             status_forbid(&mut res);
             return Ok(res);
         }
@@ -1216,11 +1228,18 @@ impl Server {
         let sharing = sharing.clone();
         let result = tokio::task::spawn_blocking(move || {
             let _permit = permit;
-            sharing.create(&request, crate::utils::unix_now().as_secs())
+            let now = crate::utils::unix_now().as_secs();
+            match request {
+                ShareMutation::Create(request) => sharing.create(&request, now).map(Some),
+                ShareMutation::Revoke(request) => sharing
+                    .revoke(&request.path, &request.token, now)
+                    .map(|()| None),
+            }
         })
         .await?;
         match result {
-            Ok(link) => {
+            Ok(None) => *res.status_mut() = StatusCode::NO_CONTENT,
+            Ok(Some(link)) => {
                 *res.status_mut() = StatusCode::CREATED;
                 res.headers_mut()
                     .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -1228,9 +1247,9 @@ impl Server {
             }
             Err(error) if error.is::<crate::share_index::RecordWriteFailed>() => {
                 *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-                *res.body_mut() = body_full("Cannot create share link");
+                *res.body_mut() = body_full("Cannot update share link");
             }
-            Err(_) => status_bad_request(&mut res, "Cannot share this file or expiry"),
+            Err(_) => status_bad_request(&mut res, "Invalid share request"),
         }
         Ok(res)
     }
@@ -1865,6 +1884,18 @@ impl Server {
             size,
         }))
     }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RevokeRequest {
+    path: String,
+    token: String,
+}
+
+enum ShareMutation {
+    Create(ShareRequest),
+    Revoke(RevokeRequest),
 }
 
 #[derive(Debug, Serialize, PartialEq)]

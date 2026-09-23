@@ -1,8 +1,10 @@
 use std::{
+    collections::HashSet,
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
+    sync::RwLock,
 };
 
 use anyhow::{ensure, Context, Result};
@@ -20,6 +22,7 @@ impl std::fmt::Display for RecordWriteFailed {
 
 pub struct ShareIndex {
     directory: PathBuf,
+    revoked: RwLock<HashSet<String>>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -58,7 +61,53 @@ impl ShareIndex {
                 "share state must be outside the served directories"
             );
         }
-        Ok(Self { directory })
+        let now = crate::utils::unix_now().as_secs();
+        let mut revoked = HashSet::new();
+        for entry in fs::read_dir(&directory)? {
+            let entry = entry?;
+            let name = entry.file_name();
+            let Some(name) = name.to_str().and_then(|name| name.strip_suffix(".revoked")) else {
+                continue;
+            };
+            let (expiry, token) = name.split_once('-').context("invalid share revocation")?;
+            ensure!(entry.file_type()?.is_file(), "invalid share revocation");
+            if expiry.parse::<u64>()? > now {
+                revoked.insert(token.to_owned());
+            }
+        }
+        Ok(Self {
+            directory,
+            revoked: RwLock::new(revoked),
+        })
+    }
+
+    pub fn is_revoked(&self, token: &str) -> bool {
+        self.revoked
+            .read()
+            .map(|revoked| revoked.contains(token))
+            .unwrap_or(true)
+    }
+
+    pub fn revoke(&self, token: &str, expires_at: u64) -> Result<()> {
+        let path = self.directory.join(format!("{expires_at}-{token}.revoked"));
+        let file = match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&path)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => File::open(path)?,
+            Err(error) => return Err(error.into()),
+        };
+        ensure!(file.metadata()?.is_file(), "invalid share revocation");
+        file.sync_all()?;
+        File::open(&self.directory)?.sync_all()?;
+        self.revoked
+            .write()
+            .map_err(|_| anyhow::anyhow!("share revocations unavailable"))?
+            .insert(token.to_owned());
+        Ok(())
     }
 
     pub fn record(&self, entry: &StoredShare) -> Result<()> {

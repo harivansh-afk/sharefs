@@ -41,7 +41,7 @@ The authenticated owner API is `POST /__sharefs__/api/share` with
 `{"path":"/Documents/notes.md","expires_in":604800}`. It returns `url` and
 `expires_at`. Links authorize GET/HEAD for one live file path, including range
 requests. Renaming the file breaks its link; replacing its contents at the same
-path changes what recipients read. There is no database or per-link revocation.
+path changes what recipients read. There is no database.
 Keeping the signing key preserves links across restarts; rotating it revokes all
 links. The former database and download-token formats are no longer used.
 
@@ -50,20 +50,31 @@ Shared links
 
 The **Shares** link on the right of the header opens an owner-only table of
 active links, with file paths, creation/expiration times and copy/open actions.
+The red trash button deactivates that link without deleting the file or affecting
+its other links. Deactivation persists across service restarts.
 `GET /__sharefs__/api/shares` returns the same records as JSON. Browser and CLI
 links share the same index and survive restarts. Expired links and links signed
 with an old key are excluded. Links created before tracking was enabled still
 work, but cannot be recovered into the list.
 
-The index stores one private JSON file per link using atomic writes. It is read
-only for the Shares page; public downloads still validate signed tokens without
-reading it. Records are retained after expiry; removing a record does not revoke
-its link. No database or background scanner is involved.
+The index stores one private JSON file per link using atomic writes. Deactivation
+writes a durable marker and updates an in-memory set; downloads check the signature
+and that set without reading the index. Keep the state directory to preserve
+deactivations across restarts. Records are retained after expiry; removing a JSON
+record alone does not revoke its link. No database or background scanner is involved.
+
+The owner API accepts `DELETE /__sharefs__/api/share` with
+`{"path":"/Documents/notes.md","token":"..."}` and returns 204 after recording
+the deactivation. New shares use unique tokens; existing tokens remain valid until
+expiry or deactivation. A download already in progress cannot be recalled.
+
+The interface uses locally embedded Phosphor icons and the locally installed
+Berkeley Mono font, with a monospace fallback.
 
 
 File operations
 
 `--allow-upload` permits new files, `--allow-edit` permits changes to existing
 files, and `--allow-rename` permits renaming within the same directory. Rename
-never replaces a destination. DELETE is always rejected, including with `-A`.
+never replaces a destination. File deletion is always rejected, including with `-A`.
 The browser exposes icons for sharing, editing, downloading and renaming. Saving preserves the editor contents on a failed request.

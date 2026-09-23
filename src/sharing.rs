@@ -186,7 +186,7 @@ impl Sharing {
         let index = self.index.as_ref().context("share tracking is disabled")?;
         let mut links = Vec::new();
         for entry in index.entries(now)? {
-            if self.key.verify(&entry.path, &entry.token, now) {
+            if self.key.verify(&entry.path, &entry.token, now) && !index.is_revoked(&entry.token) {
                 links.push(SharedFile {
                     url: format!(
                         "{}{}?token={}",
@@ -213,7 +213,26 @@ impl Sharing {
             self.key.verify(path, token, now),
             "invalid or expired share link"
         );
+        ensure!(
+            !self
+                .index
+                .as_ref()
+                .is_some_and(|index| index.is_revoked(token)),
+            "revoked share link"
+        );
         self.open(path)
+    }
+
+    pub fn revoke(&self, path: &str, token: &str, now: u64) -> Result<()> {
+        let expires_at = self
+            .key
+            .verify_expiry(path, token, now)
+            .context("invalid or expired share link")?;
+        self.index
+            .as_ref()
+            .context("share tracking is disabled")?
+            .revoke(token, expires_at)
+            .context(RecordWriteFailed)
     }
 
     /// Resolve and open beneath the served root in one kernel operation. A concurrent
