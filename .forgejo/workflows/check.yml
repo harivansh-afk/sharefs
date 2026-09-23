@@ -9,6 +9,8 @@ jobs:
   rust:
     runs-on: native
     timeout-minutes: 20
+    env:
+      CARGO_BUILD_JOBS: "2"
     steps:
       - uses: actions/checkout@v4
       - run: nix develop --command cargo fmt --all --check
