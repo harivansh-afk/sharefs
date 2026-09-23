@@ -8,10 +8,18 @@ use anyhow::{bail, ensure, Context, Result};
 use hyper::Uri;
 use sharefs::{ShareLink, ShareRequest};
 
-use crate::{args::Args, token::SigningKey, utils::encode_uri};
+use serde::Serialize;
+
+use crate::{
+    args::Args,
+    share_index::{RecordWriteFailed, ShareIndex, StoredShare},
+    token::SigningKey,
+    utils::encode_uri,
+};
 
 pub struct Sharing {
     key: SigningKey,
+    index: Option<ShareIndex>,
     root: File,
     public_url: String,
     local_roots: Vec<(PathBuf, String)>,
@@ -21,7 +29,9 @@ impl Sharing {
     pub fn from_args(args: &Args) -> Result<Option<Self>> {
         let Some(key_path) = &args.share_key_file else {
             ensure!(
-                args.public_url.is_none() && args.control_socket.is_none(),
+                args.public_url.is_none()
+                    && args.control_socket.is_none()
+                    && args.share_state_dir.is_none(),
                 "sharing requires --share-key-file"
             );
             return Ok(None);
@@ -108,8 +118,15 @@ impl Sharing {
         #[cfg(not(target_os = "linux"))]
         let root = File::open(&args.serve_path)?;
 
+        let index = args
+            .share_state_dir
+            .as_deref()
+            .map(|path| ShareIndex::open(path, &args.serve_path, &local_roots))
+            .transpose()?;
+
         Ok(Some(Self {
             key: SigningKey::new(&key),
+            index,
             root,
             public_url: format!("{}{}", origin.trim_end_matches('/'), args.uri_prefix),
             local_roots,
@@ -140,6 +157,17 @@ impl Sharing {
         self.open(&request.path)?;
         let token = self.key.sign(&request.path, expires_at);
 
+        if let Some(index) = &self.index {
+            index
+                .record(&StoredShare {
+                    path: request.path.clone(),
+                    token: token.clone(),
+                    created_at: now,
+                    expires_at,
+                })
+                .context(RecordWriteFailed)?;
+        }
+
         Ok(ShareLink {
             url: format!(
                 "{}{}?token={token}",
@@ -148,6 +176,36 @@ impl Sharing {
             ),
             expires_at,
         })
+    }
+
+    pub fn has_index(&self) -> bool {
+        self.index.is_some()
+    }
+
+    pub fn list(&self, now: u64) -> Result<Vec<SharedFile>> {
+        let index = self.index.as_ref().context("share tracking is disabled")?;
+        let mut links = Vec::new();
+        for entry in index.entries(now)? {
+            if self.key.verify(&entry.path, &entry.token, now) {
+                links.push(SharedFile {
+                    url: format!(
+                        "{}{}?token={}",
+                        self.public_url,
+                        encode_uri(&entry.path[1..]),
+                        entry.token
+                    ),
+                    path: entry.path,
+                    created_at: entry.created_at,
+                    expires_at: entry.expires_at,
+                });
+            }
+        }
+        links.sort_unstable_by(|a, b| {
+            b.created_at
+                .cmp(&a.created_at)
+                .then_with(|| a.path.cmp(&b.path))
+        });
+        Ok(links)
     }
 
     pub fn open_shared(&self, path: &str, token: &str, now: u64) -> Result<File> {
@@ -185,6 +243,14 @@ impl Sharing {
         }
         Ok(file)
     }
+}
+
+#[derive(Serialize)]
+pub struct SharedFile {
+    pub path: String,
+    pub url: String,
+    pub created_at: u64,
+    pub expires_at: u64,
 }
 
 fn valid_path(path: &str) -> bool {
