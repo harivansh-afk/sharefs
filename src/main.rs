@@ -6,6 +6,7 @@ mod http_utils;
 mod logger;
 mod noscript;
 mod server;
+mod share_index;
 mod sharing;
 mod token;
 mod utils;

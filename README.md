@@ -25,7 +25,8 @@ and `w`. The client talks to `/run/sharefs/control.sock` (`--socket` or
 `SHAREFS_SOCKET` overrides it). It does not read the signing key or password.
 
 The daemon needs `--share-key-file PATH`, `--public-url https://files.example`
-and `--control-socket PATH`. The key is exactly 32 random bytes, readable only
+and `--control-socket PATH`. Add `--share-state-dir PATH` to record links in a
+private directory outside the served folders. The key is exactly 32 random bytes, readable only
 by its owner and stored outside the served directory. Configure `share-roots`
 in YAML when bind mounts give files different host and browser paths:
 
@@ -43,6 +44,21 @@ requests. Renaming the file breaks its link; replacing its contents at the same
 path changes what recipients read. There is no database or per-link revocation.
 Keeping the signing key preserves links across restarts; rotating it revokes all
 links. The former database and download-token formats are no longer used.
+
+
+Shared links
+
+The **Shares** link on the right of the header opens an owner-only table of
+active links, with file paths, creation/expiration times and copy/open actions.
+`GET /__sharefs__/api/shares` returns the same records as JSON. Browser and CLI
+links share the same index and survive restarts. Expired links and links signed
+with an old key are excluded. Links created before tracking was enabled still
+work, but cannot be recovered into the list.
+
+The index stores one private JSON file per link using atomic writes. It is read
+only for the Shares page; public downloads still validate signed tokens without
+reading it. Records are retained after expiry; removing a record does not revoke
+its link. No database or background scanner is involved.
 
 
 File operations

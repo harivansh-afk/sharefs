@@ -58,6 +58,7 @@ const INDEX_HTML: &str = include_str!("../assets/index.html");
 const INDEX_CSS: &str = include_str!("../assets/index.css");
 const INDEX_JS: &str = include_str!("../assets/index.js");
 const ACTIONS_JS: &str = include_str!("../assets/actions.js");
+const SHARES_JS: &str = include_str!("../assets/shares.js");
 const ICON_SVG: &str = include_str!("../assets/icon.svg");
 const FAVICON_ICO: &[u8] = include_bytes!("../assets/favicon.ico");
 const INDEX_NAME: &str = "index.html";
@@ -163,6 +164,14 @@ impl Server {
                 return Ok(res);
             }
         };
+
+        if matches!(
+            relative_path.as_str(),
+            "__sharefs__/shares" | "__sharefs__/api/shares"
+        ) {
+            let page = relative_path == "__sharefs__/shares";
+            return self.list_shares(req, page).await;
+        }
 
         if relative_path == SHARE_API_PATH {
             return self.create_share(req).await;
@@ -836,6 +845,13 @@ impl Server {
                             HeaderValue::from_static("text/css; charset=UTF-8"),
                         );
                     }
+                    "shares.js" => {
+                        *res.body_mut() = body_full(SHARES_JS);
+                        res.headers_mut().insert(
+                            "content-type",
+                            HeaderValue::from_static("application/javascript; charset=UTF-8"),
+                        );
+                    }
                     "icon.svg" => {
                         *res.body_mut() = body_full(ICON_SVG);
                         res.headers_mut()
@@ -1033,6 +1049,82 @@ impl Server {
         Ok(())
     }
 
+    async fn list_shares(&self, req: Request, page: bool) -> Result<Response> {
+        let mut res = Response::default();
+        res.headers_mut().insert(
+            "cache-control",
+            HeaderValue::from_static("private, no-store"),
+        );
+        res.headers_mut()
+            .insert("referrer-policy", HeaderValue::from_static("no-referrer"));
+        let Some(sharing) = self.sharing.as_ref().filter(|sharing| sharing.has_index()) else {
+            status_not_found(&mut res);
+            return Ok(res);
+        };
+        let (owner, paths) =
+            self.args
+                .auth
+                .guard("/", req.method(), req.headers().get(AUTHORIZATION), false);
+        let Some(owner) = owner else {
+            self.auth_reject(&mut res)?;
+            return Ok(res);
+        };
+        if !paths.is_some_and(|paths| paths.perm().readwrite()) {
+            status_forbid(&mut res);
+            return Ok(res);
+        }
+        if !matches!(*req.method(), Method::GET | Method::HEAD) {
+            *res.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
+            res.headers_mut()
+                .insert("allow", HeaderValue::from_static("GET, HEAD"));
+            return Ok(res);
+        }
+        let output = if page {
+            res.headers_mut().insert(
+                CONTENT_TYPE,
+                HeaderValue::from_static("text/html; charset=UTF-8"),
+            );
+            let data = serde_json::json!({
+                "kind": "Shares", "href": "/", "uri_prefix": self.args.uri_prefix,
+                "auth": true, "user": owner, "allow_share_list": true,
+            });
+            self.html
+                .replace(
+                    "__ASSETS_PREFIX__",
+                    &format!("{}{}", self.args.uri_prefix, self.assets_prefix),
+                )
+                .replace(
+                    "__INDEX_DATA__",
+                    &STANDARD.encode(serde_json::to_vec(&data)?),
+                )
+        } else {
+            let Ok(permit) = self.share_requests.clone().try_acquire_owned() else {
+                *res.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
+                return Ok(res);
+            };
+            let sharing = sharing.clone();
+            let mut links = tokio::task::spawn_blocking(move || {
+                let _permit = permit;
+                sharing.list(crate::utils::unix_now().as_secs())
+            })
+            .await??;
+            links.retain(|link| self.args.auth.can_read(&owner, &link.path));
+            res.headers_mut()
+                .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+            serde_json::to_string(&links)?
+        };
+        res.headers_mut().insert(
+            "x-content-type-options",
+            HeaderValue::from_static("nosniff"),
+        );
+        res.headers_mut()
+            .typed_insert(ContentLength(output.len() as u64));
+        if req.method() != Method::HEAD {
+            *res.body_mut() = body_full(output);
+        }
+        Ok(res)
+    }
+
     async fn create_share(&self, req: Request) -> Result<Response> {
         let mut res = Response::default();
         res.headers_mut().insert(
@@ -1134,6 +1226,10 @@ impl Server {
                     .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
                 *res.body_mut() = body_full(serde_json::to_vec(&link)?);
             }
+            Err(error) if error.is::<crate::share_index::RecordWriteFailed>() => {
+                *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                *res.body_mut() = body_full("Cannot create share link");
+            }
             Err(_) => status_bad_request(&mut res, "Cannot share this file or expiry"),
         }
         Ok(res)
@@ -1229,6 +1325,13 @@ impl Server {
             allow_upload: self.args.allow_upload,
             allow_edit: self.args.allow_edit && readwrite,
             allow_rename: self.args.allow_rename && readwrite,
+            allow_share_list: self
+                .sharing
+                .as_ref()
+                .is_some_and(|sharing| sharing.has_index())
+                && user
+                    .as_deref()
+                    .is_some_and(|user| self.args.auth.is_owner(user)),
             allow_share: self.sharing.is_some()
                 && user
                     .as_deref()
@@ -1508,6 +1611,13 @@ impl Server {
             allow_upload: self.args.allow_upload && readwrite,
             allow_edit: self.args.allow_edit && readwrite,
             allow_rename: self.args.allow_rename && readwrite,
+            allow_share_list: self
+                .sharing
+                .as_ref()
+                .is_some_and(|sharing| sharing.has_index())
+                && user
+                    .as_deref()
+                    .is_some_and(|user| self.args.auth.is_owner(user)),
             allow_share: self.sharing.is_some()
                 && user
                     .as_deref()
@@ -1773,6 +1883,7 @@ pub struct IndexData {
     pub allow_edit: bool,
     pub allow_rename: bool,
     pub allow_share: bool,
+    pub allow_share_list: bool,
     pub allow_search: bool,
     pub allow_archive: bool,
     pub dir_exists: bool,
@@ -1905,6 +2016,7 @@ struct EditData {
     allow_edit: bool,
     allow_rename: bool,
     allow_share: bool,
+    allow_share_list: bool,
     auth: bool,
     user: Option<String>,
     editable: bool,

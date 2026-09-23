@@ -1,4 +1,5 @@
 import { icon, setupActions } from "./actions.js";
+import { setupShares } from "./shares.js";
 
 /**
  * @typedef {object} PathItem
@@ -144,12 +145,23 @@ async function ready() {
 
   addBreadcrumb(DATA.href, DATA.uri_prefix);
   setupActions(DATA);
+  if (DATA.allow_share_list) {
+    const shares = document.querySelector(".shares-link");
+    shares.href = DATA.uri_prefix + "__sharefs__/shares";
+    shares.classList.remove("hidden");
+    if (DATA.kind === "Shares") shares.setAttribute("aria-current", "page");
+  }
 
   if (DATA.kind === "Index") {
     document.title = `Index of ${DATA.href} - sharefs`;
     document.querySelector(".index-page").classList.remove("hidden");
 
     await setupIndexPage();
+  } else if (DATA.kind === "Shares") {
+    document.title = "Shares - sharefs";
+    document.querySelector(".shares-page").classList.remove("hidden");
+    await setupAuth();
+    await setupShares(DATA);
   } else if (DATA.kind === "Edit") {
     document.title = `Edit ${DATA.href} - sharefs`;
     document.querySelector(".editor-page").classList.remove("hidden");
@@ -344,7 +356,7 @@ function addBreadcrumb(href, uri_prefix) {
     }
     const encodedName = encodedStr(name);
     if (i === 0) {
-      $breadcrumb.insertAdjacentHTML("beforeend", `<a href="${path}">Files</a>`);
+      $breadcrumb.insertAdjacentHTML("beforeend", `<a class="action-btn" href="${path}" aria-label="Home">${icon("home")}</a>`);
     } else if (i === len - 1) {
       $breadcrumb.insertAdjacentHTML("beforeend", `<b>${encodedName}</b>`);
     } else {
@@ -674,6 +686,7 @@ function newUrl(name) {
 }
 
 function baseUrl() {
+  if (DATA.kind === "Shares") return location.origin + DATA.uri_prefix;
   return location.href.split(/[?#]/)[0];
 }
 

@@ -15,6 +15,8 @@
 
 <body>
   <svg class="icon-definitions" aria-hidden="true"><defs>
+    <symbol id="icon-open" viewBox="0 0 24 24"><path d="M14 3h7v7m0-7L10 14M10 3H3v18h18v-7"/></symbol>
+    <symbol id="icon-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9"/></symbol>
     <symbol id="icon-share" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2m3 6a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2"/></symbol>
     <symbol id="icon-edit" viewBox="0 0 24 24"><path d="m16 3 5 5-12 12-6 1 1-6Z M14 5l5 5"/></symbol>
     <symbol id="icon-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></symbol>
@@ -48,6 +50,7 @@
       <input type="submit" hidden />
     </form>
     <div class="toolbox-right">
+      <a class="shares-link hidden">Shares</a>
       <button type="button" class="action-btn login-btn hidden" aria-label="Log in"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-login"/></svg></button>
       <button type="button" class="action-btn logout-btn hidden" aria-label="Log out"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-logout"/></svg><span class="user-name sr-only"></span></button>
       <button type="button" class="action-btn save-btn hidden" aria-label="Save file"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-save"/></svg></button>
@@ -74,6 +77,16 @@
         </tbody>
       </table>
     </div>
+    <section class="shares-page hidden" aria-label="Shared files">
+      <p id="shares-status" role="status">Loading shares…</p>
+      <button id="shares-retry" type="button" hidden>Retry</button>
+      <table class="shares-table" hidden>
+        <colgroup><col><col class="col-created"><col class="col-expiry"><col class="col-actions"></colgroup>
+        <thead><tr><th scope="col">File</th><th scope="col" class="cell-created">Created</th><th scope="col">Expires</th><th scope="col" class="cell-actions">Actions</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <input id="shares-copy-link" aria-label="Share link" readonly hidden>
+    </section>
     <div class="editor-page hidden">
       <div class="not-editable hidden"></div>
       <p id="save-status" role="status"></p>

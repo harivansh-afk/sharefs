@@ -49,6 +49,15 @@ pub fn build_cli() -> Command {
                 .help("Read the 32-byte share signing key from PATH"),
         )
         .arg(
+            Arg::new("share-state-dir")
+                .env("SHAREFS_SHARE_STATE_DIR")
+                .hide_env(true)
+                .long("share-state-dir")
+                .value_parser(value_parser!(PathBuf))
+                .value_name("PATH")
+                .help("Record shared links in this private directory"),
+        )
+        .arg(
             Arg::new("public-url")
                 .env("SHAREFS_PUBLIC_URL")
                 .hide_env(true)
@@ -309,6 +318,7 @@ pub struct Args {
     #[default(default_port())]
     pub port: u16,
     pub share_key_file: Option<PathBuf>,
+    pub share_state_dir: Option<PathBuf>,
     pub public_url: Option<String>,
     pub control_socket: Option<PathBuf>,
     pub share_roots: std::collections::BTreeMap<String, PathBuf>,
@@ -367,6 +377,9 @@ impl Args {
 
         if let Some(path) = matches.get_one::<PathBuf>("share-key-file") {
             args.share_key_file = Some(path.clone());
+        }
+        if let Some(path) = matches.get_one::<PathBuf>("share-state-dir") {
+            args.share_state_dir = Some(path.clone());
         }
         if let Some(url) = matches.get_one::<String>("public-url") {
             args.public_url = Some(url.clone());
