@@ -90,9 +90,27 @@ impl Sharing {
             local_roots.push((args.serve_path.clone(), String::new()));
         }
 
+        #[cfg(target_os = "linux")]
+        let root = {
+            use rustix::fs::{openat2, Mode, OFlags, ResolveFlags, CWD};
+            File::from(
+                openat2(
+                    CWD,
+                    &args.serve_path,
+                    OFlags::PATH | OFlags::DIRECTORY | OFlags::CLOEXEC,
+                    Mode::empty(),
+                    ResolveFlags::NO_MAGICLINKS,
+                )
+                .map_err(io::Error::from)
+                .context("sharing requires openat2; check the service sandbox")?,
+            )
+        };
+        #[cfg(not(target_os = "linux"))]
+        let root = File::open(&args.serve_path)?;
+
         Ok(Some(Self {
             key: SigningKey::new(&key),
-            root: File::open(&args.serve_path)?,
+            root,
             public_url: format!("{}{}", origin.trim_end_matches('/'), args.uri_prefix),
             local_roots,
         }))

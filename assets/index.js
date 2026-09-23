@@ -1,4 +1,4 @@
-import { setupActions } from "./actions.js";
+import { icon, setupActions } from "./actions.js";
 
 /**
  * @typedef {object} PathItem
@@ -61,7 +61,6 @@ const ICONS = {
   symlinkFile: `<svg height="16" viewBox="0 0 12 16" width="12"><path fill-rule="evenodd" d="M8.5 1H1c-.55 0-1 .45-1 1v12c0 .55.45 1 1 1h10c.55 0 1-.45 1-1V4.5L8.5 1zM11 14H1V2h7l3 3v9zM6 4.5l4 3-4 3v-2c-.98-.02-1.84.22-2.55.7-.71.48-1.19 1.25-1.45 2.3.02-1.64.39-2.88 1.13-3.73.73-.84 1.69-1.27 2.88-1.27v-2H6z"></path></svg>`,
   symlinkDir: `<svg height="16" viewBox="0 0 14 16" width="14"><path fill-rule="evenodd" d="M13 4H7V3c0-.66-.31-1-1-1H1c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1V5c0-.55-.45-1-1-1zM1 3h5v1H1V3zm6 9v-2c-.98-.02-1.84.22-2.55.7-.71.48-1.19 1.25-1.45 2.3.02-1.64.39-2.88 1.13-3.73C4.86 8.43 5.82 8 7.01 8V6l4 3-4 3H7z"></path></svg>`,
   file: `<svg height="16" viewBox="0 0 12 16" width="12"><path fill-rule="evenodd" d="M6 5H2V4h4v1zM2 8h7V7H2v1zm0 2h7V9H2v1zm0 2h7v-1H2v1zm10-7.5V14c0 .55-.45 1-1 1H1c-.55 0-1-.45-1-1V2c0-.55.45-1 1-1h7.5L12 4.5zM11 5L8 2H1v12h10V5z"></path></svg>`,
-  edit: `<svg width="16" height="16" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>`,
 }
 
 /**
@@ -345,7 +344,7 @@ function addBreadcrumb(href, uri_prefix) {
     }
     const encodedName = encodedStr(name);
     if (i === 0) {
-      $breadcrumb.insertAdjacentHTML("beforeend", `<a href="${path}" title="Root"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M6.5 14.5v-3.505c0-.245.25-.495.5-.495h2c.25 0 .5.25.5.5v3.5a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5v-7a.5.5 0 0 0-.146-.354L13 5.793V2.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1.293L8.354 1.146a.5.5 0 0 0-.708 0l-6 6A.5.5 0 0 0 1.5 7.5v7a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5z"/></svg></a>`);
+      $breadcrumb.insertAdjacentHTML("beforeend", `<a href="${path}" aria-label="Root"><img class="brand-icon" src="${new URL("icon.svg", import.meta.url)}" width="24" height="24" alt=""></a>`);
     } else if (i === len - 1) {
       $breadcrumb.insertAdjacentHTML("beforeend", `<b>${encodedName}</b>`);
     } else {
@@ -457,10 +456,12 @@ function addPath(file, index) {
   if (isDir) url += "/";
   const editable = !isDir && DATA.allow_edit && file.size <= 4194304 &&
     /(?:\.(?:txt|md|rs|nix|toml|json|ya?ml|js|ts|jsx|tsx|html?|css|svg|csv|log|sh|py|go|c|h|cpp|hpp|ini|conf|xml|sql)|^(?:README|LICENSE|Makefile|Dockerfile))$/i.test(file.name);
-  const share = !isDir && DATA.allow_share ? `<button type="button" class="action-btn" data-action="share" data-index="${index}" title="Share file" aria-label="Share file"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2m3 6a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2" fill="none" stroke="currentColor" stroke-width="2"/></svg><span class="action-label">Share</span></button>` : "";
-  const edit = editable ? `<a class="action-btn" title="Edit file" aria-label="Edit file" target="_blank" rel="noopener" href="${url}?edit">${ICONS.edit}<span class="action-label">Edit</span></a>` : "";
-  const more = (!isDir || DATA.allow_rename) ? `<button type="button" class="action-btn more-actions" data-action="more" data-index="${index}" title="More actions" aria-label="More actions" aria-haspopup="true"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>` : "";
-  const actionCell = `<td class="cell-actions"><div class="row-actions">${share}${edit}${more}</div></td>`;
+  const button = (action, label) => `<button type="button" class="action-btn action-${action}" data-action="${action}" data-index="${index}" aria-label="${label}">${icon(action)}</button>`;
+  const share = !isDir && DATA.allow_share ? button("share", "Share file") : "";
+  const edit = editable ? `<a class="action-btn action-edit" aria-label="Edit file" target="_blank" rel="noopener" href="${url}?edit">${icon("edit")}</a>` : "";
+  const download = !isDir ? `<a class="action-btn action-download" aria-label="Download file" href="${url}" download>${icon("download")}</a>` : "";
+  const rename = DATA.allow_rename ? button("rename", "Rename") : "";
+  const actionCell = `<td class="cell-actions"><div class="row-actions">${share}${edit}${download}${rename}</div></td>`;
 
   let sizeDisplay = isDir ? formatDirSize(file.size) : formatFileSize(file.size).join(" ");
 
@@ -470,7 +471,7 @@ function addPath(file, index) {
     ${getPathSvg(file.path_type)}
   </td>
   <td class="path cell-name">
-    <a href="${url}" title="${encodedName}" ${isDir ? "" : `target="_blank" rel="noopener"`}>${encodedName}</a>
+    <a href="${url}" ${isDir ? "" : `target="_blank" rel="noopener"`}>${encodedName}</a>
   </td>
   <td class="cell-mtime">${formatMtime(file.mtime)}</td>
   <td class="cell-size">${sizeDisplay}</td>

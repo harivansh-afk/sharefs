@@ -116,6 +116,13 @@ impl AccessControl {
             .is_some_and(|(_, paths)| paths.perm().readwrite())
     }
 
+    /// Check file access after the request's credentials have been authenticated.
+    pub fn can_read(&self, user: &str, path: &str) -> bool {
+        self.users
+            .get(user)
+            .is_some_and(|(_, paths)| paths.guard(path, &Method::GET).is_some())
+    }
+
     pub fn guard(
         &self,
         path: &str,

@@ -50,5 +50,4 @@ File operations
 `--allow-upload` permits new files, `--allow-edit` permits changes to existing
 files, and `--allow-rename` permits renaming within the same directory. Rename
 never replaces a destination. DELETE is always rejected, including with `-A`.
-The browser exposes Share and text editing directly, with Download and Rename
-under More actions. Saving preserves the editor contents on a failed request.
+The browser exposes icons for sharing, editing, downloading and renaming. Saving preserves the editor contents on a failed request.
