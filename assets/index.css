@@ -16,6 +16,7 @@
 }
 
 html {
+  overscroll-behavior: none;
   font-family: -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   color: var(--text-primary);
@@ -310,7 +311,6 @@ svg {
 .action-rename { grid-column: 4; }
 .action-icon { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .icon-definitions { position: absolute; width: 0; height: 0; overflow: hidden; }
-.brand-icon { display: inline-block; vertical-align: middle; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 button, input, select { font: inherit; color: inherit; }
@@ -332,7 +332,7 @@ button:disabled { opacity: 0.55; cursor: default; }
   box-sizing: border-box;
   margin: 0;
   padding: 0.375rem;
-  border: 0;
+  border: 1px solid var(--text-primary);
   border-radius: 0;
   box-shadow: none;
   background: var(--bg-primary);

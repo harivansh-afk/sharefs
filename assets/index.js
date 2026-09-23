@@ -344,7 +344,7 @@ function addBreadcrumb(href, uri_prefix) {
     }
     const encodedName = encodedStr(name);
     if (i === 0) {
-      $breadcrumb.insertAdjacentHTML("beforeend", `<a href="${path}" aria-label="Root"><img class="brand-icon" src="${new URL("icon.svg", import.meta.url)}" width="24" height="24" alt=""></a>`);
+      $breadcrumb.insertAdjacentHTML("beforeend", `<a href="${path}">Files</a>`);
     } else if (i === len - 1) {
       $breadcrumb.insertAdjacentHTML("beforeend", `<b>${encodedName}</b>`);
     } else {
