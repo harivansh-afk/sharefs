@@ -6,7 +6,9 @@ export async function setupShares(data) {
   const status = document.getElementById("shares-status");
   const retry = document.getElementById("shares-retry");
   const fallback = document.getElementById("shares-copy-link");
-  const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+  const dateFormat = new Intl.DateTimeFormat(undefined, matchMedia("(max-width: 30rem)").matches
+    ? { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }
+    : { dateStyle: "medium", timeStyle: "short" });
 
   async function load() {
     retry.hidden = true;

@@ -321,7 +321,8 @@ svg {
 .shares-table td, .shares-table th { padding-block: 0.45rem; }
 .shares-table td:first-child { overflow-wrap: anywhere; padding-right: 1rem; }
 .shares-table td:first-child a { color: var(--text-primary); text-decoration: none; }
-.shares-table .col-created, .shares-table .col-expiry { width: 13rem; }
+.shares-table .col-created, .shares-table .col-expiry { width: 24ch; }
+.shares-table .cell-created, .shares-table .cell-expiry { white-space: nowrap; }
 .shares-table .col-actions { width: 6rem; }
 .action-revoke { color: #d1242f; }
 @media (prefers-color-scheme: dark) { .action-revoke { color: #ff7b72; } }
@@ -364,13 +365,12 @@ button:disabled { opacity: 0.55; cursor: default; }
 
 @media (max-width: 52rem) {
   .shares-table .col-created, .shares-table .cell-created { display: none; }
-  .shares-table .col-expiry { width: 9rem; }
   .paths-table .cell-mtime, .paths-table .col-mtime { display: none; }
 }
 
 @media (max-width: 30rem) {
   .shares-table { font-size: 0.875rem; }
-  .shares-table .col-expiry { width: 7rem; }
+  .shares-table .col-expiry { width: 17ch; }
   .paths-table .col-size, .paths-table .cell-size { width: 4rem; }
   .paths-table .col-icon { width: 1.5rem; }
   .paths-table { font-size: 0.875rem; }
