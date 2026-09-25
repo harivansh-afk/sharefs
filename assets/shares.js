@@ -8,7 +8,7 @@ export async function setupShares(data) {
   const fallback = document.getElementById("shares-copy-link");
   const dateFormat = new Intl.DateTimeFormat(undefined, matchMedia("(max-width: 30rem)").matches
     ? { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }
-    : { dateStyle: "medium", timeStyle: "short" });
+    : { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
   async function load() {
     retry.hidden = true;
