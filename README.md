@@ -1,80 +1,30 @@
 # sharefs
 
-this is an attempt to handwrite an extremely memory efficient and performant file sharing platform
+File sharing from your own filesystem. Built with Rust and Tokio, based on
+[dufs](https://github.com/sigoden/dufs).
 
-we use the tokio runtime for i/o 
+Browse files in the web UI or share them from the terminal:
+
+```sh
+share notes.md                 # read-only link, expires in 7 days
+share --expires=2h notes.md
+```
+
+Links serve the current file contents. Renaming a file breaks its link. Manage
+or revoke links from **Shares** in the web UI.
+
+The daemon needs `--share-key-file`, `--public-url`, and `--share-state-dir`
+for tracked links, plus `--control-socket` for the CLI (default client path:
+`/run/sharefs/control.sock`). Keep the 32-byte random key and private state
+directory outside the served folders. Preserve both across restarts.
+
+Uploads, edits, and renames are opt-in. File deletion is disabled.
+See `sharefs --help` for options.
+
+To work on it:
 
 ```sh
 nix develop
+cargo run -- . --bind 127.0.0.1 --port 38471
+cargo test --locked -- --test-threads=1
 ```
-
-Plan
-
-1. Keep share permission and expiry decisions in a small Sans-I/O core.
-2. Use one request contract for the CLI and web Share controls.
-3. Make saves conflict-aware; load directory details and viewers on demand.
-4. Bound filesystem, database and transfer work so browsing stays responsive.
-5. Measure browser, network and I/O time before changing runtimes or pinning threads.
-
-
-Usage (Linux)
-
-`share FILE` prints a read-only link that expires in seven days. Use
-`share --expires=2h FILE` to choose a duration; units are `s`, `m`, `h`, `d`
-and `w`. The client talks to `/run/sharefs/control.sock` (`--socket` or
-`SHAREFS_SOCKET` overrides it). It does not read the signing key or password.
-
-The daemon needs `--share-key-file PATH`, `--public-url https://files.example`
-and `--control-socket PATH`. Add `--share-state-dir PATH` to record links in a
-private directory outside the served folders. The key is exactly 32 random bytes, readable only
-by its owner and stored outside the served directory. Configure `share-roots`
-in YAML when bind mounts give files different host and browser paths:
-
-```yaml
-share-roots:
-  Documents: /home/user/Documents
-  Downloads: /home/user/Downloads
-  Uploads: /home/user/Uploads
-```
-
-The authenticated owner API is `POST /__sharefs__/api/share` with
-`{"path":"/Documents/notes.md","expires_in":604800}`. It returns `url` and
-`expires_at`. Links authorize GET/HEAD for one live file path, including range
-requests. Renaming the file breaks its link; replacing its contents at the same
-path changes what recipients read. There is no database.
-Keeping the signing key preserves links across restarts; rotating it revokes all
-links. The former database and download-token formats are no longer used.
-
-
-Shared links
-
-The **Shares** link on the right of the header opens an owner-only table of
-active links, with file paths, creation/expiration times and copy/open actions.
-The red trash button deactivates that link without deleting the file or affecting
-its other links. Deactivation persists across service restarts.
-`GET /__sharefs__/api/shares` returns the same records as JSON. Browser and CLI
-links share the same index and survive restarts. Expired links and links signed
-with an old key are excluded. Links created before tracking was enabled still
-work, but cannot be recovered into the list.
-
-The index stores one private JSON file per link using atomic writes. Deactivation
-writes a durable marker and updates an in-memory set; downloads check the signature
-and that set without reading the index. Keep the state directory to preserve
-deactivations across restarts. Records are retained after expiry; removing a JSON
-record alone does not revoke its link. No database or background scanner is involved.
-
-The owner API accepts `DELETE /__sharefs__/api/share` with
-`{"path":"/Documents/notes.md","token":"..."}` and returns 204 after recording
-the deactivation. New shares use unique tokens; existing tokens remain valid until
-expiry or deactivation. A download already in progress cannot be recalled.
-
-The interface uses locally embedded Phosphor icons and the locally installed
-Berkeley Mono font, with a monospace fallback.
-
-
-File operations
-
-`--allow-upload` permits new files, `--allow-edit` permits changes to existing
-files, and `--allow-rename` permits renaming within the same directory. Rename
-never replaces a destination. File deletion is always rejected, including with `-A`.
-The browser exposes icons for sharing, editing, downloading and renaming. Saving preserves the editor contents on a failed request.
