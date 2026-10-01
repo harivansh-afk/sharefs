@@ -13,6 +13,9 @@ share --expires=2h notes.md
 Links serve the current file contents. Renaming a file breaks its link. Manage
 or revoke links from **Shares** in the web UI.
 
+Use `j`/`k` to select a row, `Enter` to open it, and `-` to go up a folder.
+Press `?` or click the help icon beside Upload for keyboard shortcuts.
+
 The daemon needs `--share-key-file`, `--public-url`, and `--share-state-dir`
 for tracked links, plus `--control-socket` for the CLI (default client path:
 `/run/sharefs/control.sock`). Keep the 32-byte random key and private state
