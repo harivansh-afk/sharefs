@@ -376,3 +376,12 @@ button:disabled { opacity: 0.55; cursor: default; }
   .paths-table { font-size: 0.875rem; }
   .breadcrumb { font-size: 1rem; }
 }
+
+.paths-table .keyboard-current { background: var(--bg-hover); }
+.paths-table .keyboard-current .cell-icon { box-shadow: inset 2px 0 var(--text-accent); }
+.paths-table .cell-name a { scroll-margin-block: 4rem 1rem; }
+#keyboard-help { width: min(23rem, calc(100vw - 1.5rem)); padding: 0.75rem; }
+#keyboard-help h2 { margin: 0 0 0.75rem; font-size: 1rem; font-weight: normal; }
+#keyboard-help dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1rem; margin: 0; font-size: 0.875rem; }
+#keyboard-help dd { margin: 0; }
+#keyboard-help kbd { font: inherit; color: var(--text-accent); }

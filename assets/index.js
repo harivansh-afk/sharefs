@@ -386,7 +386,88 @@ async function setupIndexPage() {
 
   renderPathsTableHead();
   renderPathsTableBody();
+  setupKeyboardNavigation();
+}
 
+function setupKeyboardNavigation() {
+  const links = Array.from($pathsTableBody.querySelectorAll(".cell-name a"));
+  const help = document.querySelector(".keyboard-help");
+  const panel = document.getElementById("keyboard-help");
+  let selected = 0;
+  let previousFocus;
+
+  function select(index, focus = false) {
+    selected = Math.max(0, Math.min(index, links.length - 1));
+    links.forEach((link, i) => link.closest("tr").classList.toggle("keyboard-current", i === selected));
+    if (focus && links[selected]) {
+      links[selected].focus({ preventScroll: true });
+      links[selected].scrollIntoView({ block: "nearest" });
+    }
+  }
+
+  function positionHelp() {
+    if (!panel.matches(":popover-open")) return;
+    const anchor = help.getBoundingClientRect();
+    const bounds = panel.getBoundingClientRect();
+    panel.style.left = `${Math.max(12, Math.min(anchor.left, innerWidth - bounds.width - 12))}px`;
+    panel.style.top = `${Math.max(12, Math.min(anchor.bottom + 6, innerHeight - bounds.height - 12))}px`;
+  }
+
+  help.classList.remove("hidden");
+  panel.addEventListener("beforetoggle", event => {
+    if (event.newState === "open") previousFocus = document.activeElement;
+  });
+  panel.addEventListener("toggle", () => {
+    const open = panel.matches(":popover-open");
+    help.setAttribute("aria-expanded", String(open));
+    if (open) {
+      positionHelp();
+      panel.focus({ preventScroll: true });
+    }
+  });
+  window.addEventListener("resize", positionHelp);
+  window.addEventListener("scroll", positionHelp, { passive: true });
+  links.forEach((link, i) => link.addEventListener("focus", () => select(i)));
+  select(0);
+
+  document.addEventListener("keydown", event => {
+    const target = event.target;
+    if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.altKey || event.metaKey ||
+        target.isContentEditable || target.closest("input, textarea, select, [role=textbox]")) return;
+
+    if (event.key === "Escape" && panel.matches(":popover-open")) {
+      event.preventDefault();
+      panel.hidePopover();
+      previousFocus?.focus({ preventScroll: true });
+      return;
+    }
+    if (event.key === "?") {
+      event.preventDefault();
+      if (!event.repeat) {
+        if (panel.matches(":popover-open")) {
+          panel.hidePopover();
+          previousFocus?.focus({ preventScroll: true });
+        } else help.click();
+      }
+      return;
+    }
+    if (document.querySelector(":popover-open, dialog[open]")) return;
+
+    if (event.key === "j" || event.key === "k") {
+      event.preventDefault();
+      if (links.length) select(selected + (event.key === "j" ? 1 : -1), true);
+    } else if (event.key === "Enter" && links.length &&
+               (!target.closest("button, a, summary, [role=button]") || links.includes(target))) {
+      event.preventDefault();
+      if (!event.repeat) links[selected].click();
+    } else if (event.key === "-") {
+      event.preventDefault();
+      if (!event.repeat && DATA.href !== "/") {
+        const parts = DATA.href.replace(/\/$/, "").split("/").slice(1, -1);
+        location.assign(DATA.uri_prefix + parts.map(encodeURIComponent).join("/") + (parts.length ? "/" : ""));
+      }
+    }
+  });
 }
 
 /**
