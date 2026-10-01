@@ -244,3 +244,31 @@ fn digest_authenticated_owner_can_share_a_file() -> Result<(), Error> {
     assert_eq!(reqwest::blocking::get(url)?.text()?, "This is test.txt");
     Ok(())
 }
+
+#[test]
+fn raw_files_are_sandboxed_for_owners_and_recipients() -> Result<(), Error> {
+    let (server, _state) = server()?;
+    let client = Client::new();
+    let (_, public) = create(&server, "/test.html")?;
+    let responses = [
+        client.get(public).send()?,
+        client
+            .get(server.url().join("test.html")?)
+            .basic_auth("owner", Some("secret"))
+            .send()?,
+    ];
+    for response in responses {
+        assert_eq!(response.status(), 200);
+        let policy = response.headers()["content-security-policy"].to_str()?;
+        assert!(policy.contains("sandbox allow-downloads;"));
+        assert!(policy.contains("default-src 'none'"));
+        assert!(policy.contains("form-action 'none'"));
+        assert_eq!(response.headers()["x-content-type-options"], "nosniff");
+    }
+    let ui = client
+        .get(server.url())
+        .basic_auth("owner", Some("secret"))
+        .send()?;
+    assert!(!ui.headers().contains_key("content-security-policy"));
+    Ok(())
+}

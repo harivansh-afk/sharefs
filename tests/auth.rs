@@ -389,3 +389,50 @@ fn auth_anonymous_no_precedence(
 
     Ok(())
 }
+
+#[rstest]
+fn digest_cannot_be_replayed_on_a_different_target(
+    #[with(&["--auth", "user:pass@/:rw"])] server: TestServer,
+) -> Result<(), Error> {
+    let client = reqwest::blocking::Client::new();
+    let challenge = client.get(server.url()).send()?;
+    let mut prompt = digest_auth::parse(challenge.headers()["www-authenticate"].to_str()?)?;
+    let context = digest_auth::AuthContext::new("user", "pass", "/test.txt");
+    let proof = prompt.respond(&context)?.to_header_string();
+    assert_eq!(
+        client
+            .get(server.url().join("test.txt")?)
+            .header("Authorization", &proof)
+            .send()?
+            .status(),
+        200
+    );
+    for path in ["index.html", "test.txt?edit", "__sharefs__/api/shares"] {
+        assert_eq!(
+            client
+                .get(server.url().join(path)?)
+                .header("Authorization", &proof)
+                .send()?
+                .status(),
+            401
+        );
+    }
+    Ok(())
+}
+
+#[rstest]
+fn malformed_digest_nonce_returns_401(
+    #[with(&["--auth", "user:pass@/:rw"])] server: TestServer,
+) -> Result<(), Error> {
+    let nonce = format!("aaaaaaaé{}", "a".repeat(25));
+    let header = reqwest::header::HeaderValue::from_bytes(
+        format!("Digest username=\"user\", nonce=\"{nonce}\", uri=\"/\", response=\"x\"")
+            .as_bytes(),
+    )?;
+    let response = reqwest::blocking::Client::new()
+        .get(server.url())
+        .header("Authorization", header)
+        .send()?;
+    assert_eq!(response.status(), 401);
+    Ok(())
+}
