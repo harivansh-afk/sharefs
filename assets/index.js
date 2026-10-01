@@ -398,19 +398,10 @@ function setupKeyboardNavigation() {
 
   function select(index, focus = false) {
     selected = Math.max(0, Math.min(index, links.length - 1));
-    links.forEach((link, i) => link.closest("tr").classList.toggle("keyboard-current", i === selected));
     if (focus && links[selected]) {
       links[selected].focus({ preventScroll: true });
       links[selected].scrollIntoView({ block: "nearest" });
     }
-  }
-
-  function positionHelp() {
-    if (!panel.matches(":popover-open")) return;
-    const anchor = help.getBoundingClientRect();
-    const bounds = panel.getBoundingClientRect();
-    panel.style.left = `${Math.max(12, Math.min(anchor.left, innerWidth - bounds.width - 12))}px`;
-    panel.style.top = `${Math.max(12, Math.min(anchor.bottom + 6, innerHeight - bounds.height - 12))}px`;
   }
 
   help.classList.remove("hidden");
@@ -421,12 +412,9 @@ function setupKeyboardNavigation() {
     const open = panel.matches(":popover-open");
     help.setAttribute("aria-expanded", String(open));
     if (open) {
-      positionHelp();
       panel.focus({ preventScroll: true });
     }
   });
-  window.addEventListener("resize", positionHelp);
-  window.addEventListener("scroll", positionHelp, { passive: true });
   links.forEach((link, i) => link.addEventListener("focus", () => select(i)));
   select(0);
 
