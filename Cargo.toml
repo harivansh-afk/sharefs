@@ -1,6 +1,6 @@
 [package]
 name = "sharefs"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
 default-run = "sharefs"
 authors = ["sigoden <sigoden@gmail.com>", "Harivansh Rathi <rathiharivansh@gmail.com>"]

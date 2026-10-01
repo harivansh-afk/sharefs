@@ -94,7 +94,7 @@ pub fn parse_range(range: &str, size: u64) -> Option<Vec<(u64, u64)>> {
         let (start, end) = range.trim().split_once('-')?;
         if start.is_empty() {
             let offset = end.parse::<u64>().ok()?;
-            if offset <= size {
+            if offset > 0 && offset <= size {
                 result.push((size - offset, size - 1));
             } else {
                 return None;

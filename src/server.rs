@@ -157,6 +157,18 @@ impl Server {
         let headers = req.headers();
         let method = req.method().clone();
 
+        if headers.get(AUTHORIZATION).is_some_and(|authorization| {
+            !crate::auth::matches_request_target(
+                authorization,
+                req.uri()
+                    .path_and_query()
+                    .map_or("/", |target| target.as_str()),
+            )
+        }) {
+            self.auth_reject(&mut res)?;
+            return Ok(res);
+        }
+
         let relative_path = match self.resolve_path(req_path) {
             Some(v) => v,
             None => {
@@ -910,6 +922,15 @@ impl Server {
         res: &mut Response,
     ) -> Result<()> {
         let size = meta.len();
+        if self.sharing.is_some() {
+            res.headers_mut().insert("content-security-policy", HeaderValue::from_static(
+                "sandbox allow-downloads; default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
+            ));
+            res.headers_mut().insert(
+                "x-content-type-options",
+                HeaderValue::from_static("nosniff"),
+            );
+        }
         let mut use_range = true;
         if let Some((etag, last_modified)) = extract_cache_headers(&meta) {
             if let Some(if_unmodified_since) = headers.typed_get::<IfUnmodifiedSince>() {
@@ -962,6 +983,24 @@ impl Server {
             })
         } else {
             None
+        };
+
+        // Multipart responses are buffered. Bound both amplification and allocation.
+        // RFC 9110 permits ignoring Range and returning the full representation.
+        let ranges = match ranges {
+            Some(Some(ref parts))
+                if parts.len() > 1
+                    && (parts.len() > 16
+                        || parts
+                            .iter()
+                            .try_fold(0_u64, |total, (start, end)| {
+                                total.checked_add(end - start + 1)
+                            })
+                            .is_none_or(|total| total > 8 * 1024 * 1024)) =>
+            {
+                None
+            }
+            ranges => ranges,
         };
 
         let content_type = get_content_type(path, &mut file).await?;
@@ -1311,10 +1350,6 @@ impl Server {
         );
         res.headers_mut()
             .insert("referrer-policy", HeaderValue::from_static("no-referrer"));
-        res.headers_mut().insert(
-            "content-security-policy",
-            HeaderValue::from_static("script-src 'none'; base-uri 'none'; form-action 'none'"),
-        );
         Ok(res)
     }
 
@@ -1472,13 +1507,12 @@ impl Server {
             return Ok(());
         }
 
-        ensure_path_parent(&dest).await?;
-
         if self.guard_root_contained(&dest).await {
             status_bad_request(res, "Invalid Destination");
             return Ok(());
         }
 
+        ensure_path_parent(&dest).await?;
         fs::copy(path, &dest).await?;
 
         status_no_content(res);
@@ -1696,7 +1730,9 @@ impl Server {
             return false;
         }
         let mut check_path = path.to_path_buf();
-        while !fs::try_exists(&check_path).await.unwrap_or_default() {
+        // A dangling symlink exists even though its target does not. Do not walk
+        // past it and subsequently create its target outside the served root.
+        while fs::symlink_metadata(&check_path).await.is_err() {
             match check_path.parent() {
                 Some(parent) => check_path = parent.to_path_buf(),
                 None => return true,

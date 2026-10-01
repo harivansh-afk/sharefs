@@ -367,6 +367,17 @@ pub fn get_auth_user(authorization: &HeaderValue) -> Option<String> {
     }
 }
 
+/// A Digest proof is only valid for the exact request target it signs.
+pub fn matches_request_target(authorization: &HeaderValue, target: &str) -> bool {
+    let Some(value) = strip_prefix(authorization.as_bytes(), b"Digest ") else {
+        return true;
+    };
+    to_headermap(value)
+        .ok()
+        .and_then(|fields| fields.get(b"uri".as_ref()).copied())
+        == Some(target.as_bytes())
+}
+
 pub fn check_auth(
     authorization: &HeaderValue,
     method: &str,
@@ -394,6 +405,9 @@ pub fn check_auth(
 
         None
     } else if let Some(value) = strip_prefix(authorization.as_bytes(), b"Digest ") {
+        if auth_pass.starts_with("$6$") {
+            return None;
+        }
         let digest_map = to_headermap(value).ok()?;
         if let (Some(username), Some(nonce), Some(user_response)) = (
             digest_map
@@ -470,7 +484,7 @@ pub fn check_auth(
 /// Check if a nonce is still valid.
 /// Return an error if it was never valid
 fn validate_nonce(nonce: &[u8]) -> Result<bool> {
-    if nonce.len() != 34 {
+    if nonce.len() != 34 || !nonce.iter().all(u8::is_ascii_hexdigit) {
         bail!("invalid nonce");
     }
     //parse hex
@@ -531,12 +545,15 @@ fn to_headermap(header: &[u8]) -> Result<HashMap<&[u8], &[u8]>, ()> {
         }
         i += 1;
     }
+    if esc {
+        return Err(());
+    }
     sep.push(i);
 
     i = 0;
     let mut ret = HashMap::new();
     for (&k, &a) in sep.iter().zip(assign.iter()) {
-        while header[i] == b' ' {
+        while header.get(i) == Some(&b' ') {
             i += 1;
         }
         if a <= i || k <= 1 + a {
@@ -546,7 +563,7 @@ fn to_headermap(header: &[u8]) -> Result<HashMap<&[u8], &[u8]>, ()> {
         let key = &header[i..a];
         let val = if header[1 + a] == b'"' && header[k - 1] == b'"' {
             //escaped
-            &header[2 + a..k - 1]
+            header.get(2 + a..k - 1).ok_or(())?
         } else {
             //not escaped
             &header[1 + a..k]
@@ -696,5 +713,48 @@ mod tests {
             paths.find("dir2/dir23//dir231/file"),
             Some(AccessPaths::new(AccessPerm::ReadWrite))
         );
+    }
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+
+    #[test]
+    fn malformed_nonce_is_rejected_without_panicking() {
+        for offset in 0..33 {
+            let nonce = format!("{}é{}", "a".repeat(offset), "a".repeat(32 - offset));
+            assert!(validate_nonce(nonce.as_bytes()).is_err());
+        }
+        assert!(validate_nonce(b"000000000000000000000000000000000g").is_err());
+        assert!(validate_nonce(create_nonce().unwrap().as_bytes()).unwrap());
+    }
+
+    #[test]
+    fn malformed_digest_fields_never_panic() {
+        let alphabet = b"a=, \"";
+        for length in 0..=7 {
+            for mut value in 0..alphabet.len().pow(length) {
+                let mut header = vec![0; length as usize];
+                for byte in &mut header {
+                    *byte = alphabet[value % alphabet.len()];
+                    value /= alphabet.len();
+                }
+                let _ = to_headermap(&header);
+            }
+        }
+        assert!(to_headermap(b"username=\"").is_err());
+    }
+
+    #[test]
+    fn digest_target_includes_path_and_query() {
+        let header = HeaderValue::from_static("Digest username=\"user\", uri=\"/file?edit\"");
+        assert!(matches_request_target(&header, "/file?edit"));
+        assert!(!matches_request_target(&header, "/file"));
+        assert!(!matches_request_target(&header, "/other?edit"));
+        assert!(!matches_request_target(
+            &HeaderValue::from_static("Digest username=\"user\""),
+            "/"
+        ));
     }
 }

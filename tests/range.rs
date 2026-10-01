@@ -126,3 +126,32 @@ fn get_file_multipart_range_reversed(server: TestServer) -> Result<(), Error> {
     assert_eq!(resp.headers().get("accept-ranges").unwrap(), "bytes");
     Ok(())
 }
+
+#[rstest]
+fn zero_suffix_on_empty_file_is_unsatisfiable(server: TestServer) -> Result<(), Error> {
+    std::fs::write(server.path().join("empty"), "")?;
+    let response = fetch!(b"GET", server.url().join("empty")?)
+        .header("range", "bytes=-0")
+        .send()?;
+    assert_eq!(response.status(), 416);
+    Ok(())
+}
+
+#[rstest]
+fn multipart_amplification_falls_back_to_streaming(server: TestServer) -> Result<(), Error> {
+    let path = server.path().join("large");
+    let file = std::fs::File::create(&path)?;
+    file.set_len(5 * 1024 * 1024)?;
+    let response = fetch!(b"HEAD", server.url().join("large")?)
+        .header("range", "bytes=0-,0-")
+        .send()?;
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.headers()["content-length"], "5242880");
+    let ranges = format!("bytes={}", vec!["0-1"; 17].join(","));
+    let response = fetch!(b"GET", server.url().join("test.txt")?)
+        .header("range", ranges)
+        .send()?;
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.text()?, "This is test.txt");
+    Ok(())
+}
