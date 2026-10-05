@@ -31,3 +31,19 @@ nix develop
 cargo run -- . --bind 127.0.0.1 --port 38471
 cargo test --locked -- --test-threads=1
 ```
+
+## Benchmarks
+
+Spark, 2026-10-03: four server cores, warm-cache HTTP over loopback; medians of
+three 15-second runs. Small files: 4 KiB, 16 connections. Bulk: 64 MiB, 8 connections.
+
+| Server | 4 KiB req/s ↑ | p95 ms ↓ | Bulk MiB/s ↑ | CPU s/GiB ↓ | RAM idle / peak MiB ↓ |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| sharefs | 388 | 42.891 | 5,909 | 0.644 | 2.5 / 11.0 |
+| dufs | 387 | 43.069 | 5,917 | 0.643 | 3.1 / 12.5 |
+| nginx | 316,669 | 0.090 | 22,989 | 0.059 | 11.2 / 11.4 |
+| Python http.server | 365 | 42.057 | 7,430 | 0.510 | 11.1 / 14.2 |
+
+p95 is for small files; CPU cost is for bulk downloads. RAM is process PSS,
+excluding filesystem cache. nginx bulk throughput is client-limited.
+[Method, full results, and reproduction](benchmarks/README.md).
