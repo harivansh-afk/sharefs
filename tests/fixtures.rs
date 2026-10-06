@@ -156,6 +156,7 @@ pub fn wait_for_port(port: u16) {
 #[allow(dead_code)]
 pub struct TestServer {
     port: u16,
+    share_port: Option<u16>,
     tmpdir: TempDir,
     child: Child,
     is_tls: bool,
@@ -170,6 +171,7 @@ impl TestServer {
         I::Item: AsRef<std::ffi::OsStr>,
     {
         let mut child = Command::new(assert_cmd::cargo::cargo_bin!())
+            .env("SHAREFS_BIND", "127.0.0.1")
             .arg(tmpdir.path())
             .arg("--port")
             .arg(port.to_string())
@@ -180,8 +182,13 @@ impl TestServer {
         let (ready, receive) = mpsc::sync_channel(1);
         let output_reader = thread::spawn(move || {
             let mut reported = false;
+            let mut share_port = None;
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 if reported {
+                    continue;
+                }
+                if let Some(address) = line.trim().strip_prefix("Sharing on ") {
+                    share_port = Url::parse(address).ok().and_then(|url| url.port());
                     continue;
                 }
                 let text = line
@@ -190,7 +197,7 @@ impl TestServer {
                     .unwrap_or(line.trim());
                 if let Ok(url) = Url::parse(text) {
                     if let Some(port) = url.port_or_known_default() {
-                        let _ = ready.send((port, url.scheme() == "https"));
+                        let _ = ready.send((port, url.scheme() == "https", share_port));
                         reported = true;
                     }
                 }
@@ -198,12 +205,13 @@ impl TestServer {
         });
         let mut server = Self {
             port: 0,
+            share_port: None,
             tmpdir,
             child,
             is_tls: false,
             output_reader: Some(output_reader),
         };
-        let (port, is_tls) = receive
+        let (port, is_tls, share_port) = receive
             .recv_timeout(Duration::from_secs(5))
             .map_err(|error| format!("server did not announce a listening address: {error}"))?;
         if port == 0 {
@@ -213,6 +221,7 @@ impl TestServer {
             return Err(format!("server exited during startup: {status}").into());
         }
         server.port = port;
+        server.share_port = share_port;
         server.is_tls = is_tls;
         Ok(server)
     }
@@ -224,6 +233,14 @@ impl TestServer {
 
     pub fn path(&self) -> &std::path::Path {
         self.tmpdir.path()
+    }
+
+    pub fn share_url(&self) -> Url {
+        Url::parse(&format!(
+            "http://127.0.0.1:{}",
+            self.share_port.expect("share listener")
+        ))
+        .unwrap()
     }
 
     pub fn port(&self) -> u16 {

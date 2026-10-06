@@ -12,6 +12,7 @@ const API: &str = "__sharefs__/api/share";
 
 fn server() -> Result<(TestServer, assert_fs::TempDir), Error> {
     let state = assert_fs::TempDir::new()?;
+    fs::set_permissions(state.path(), fs::Permissions::from_mode(0o700))?;
     let key = state.child("key");
     key.write_binary(&[7; 32])?;
     fs::set_permissions(key.path(), fs::Permissions::from_mode(0o600))?;
@@ -24,8 +25,12 @@ fn server() -> Result<(TestServer, assert_fs::TempDir), Error> {
             "127.0.0.1",
             "--share-key-file",
             key.path().to_str().unwrap(),
+            "--share-state-dir",
+            state.path().to_str().unwrap(),
             "--public-url",
             "https://files.example",
+            "--share-listen",
+            "127.0.0.1:0",
             "--auth",
             "owner:secret@/:rw|reader:secret@/",
             "--allow-upload",
@@ -54,6 +59,115 @@ fn create(server: &TestServer, path: &str) -> Result<(Value, Url), Error> {
         .url()
         .join(&format!("{}?{}", public.path(), public.query().unwrap()))?;
     Ok((body, local))
+}
+
+#[test]
+fn separate_listener_only_serves_signed_reads_and_observes_revocation() -> Result<(), Error> {
+    let (server, _state) = server()?;
+    let client = Client::new();
+    let (_, link) = create(&server, "/test.txt")?;
+    let public = server
+        .share_url()
+        .join(&format!("{}?{}", link.path(), link.query().unwrap()))?;
+    assert_eq!(
+        client.get(public.clone()).send()?.text()?,
+        "This is test.txt"
+    );
+    assert_eq!(client.head(public.clone()).send()?.status(), 200);
+    let range = client
+        .get(public.clone())
+        .header("Range", "bytes=0-3")
+        .send()?;
+    assert_eq!(range.status(), 206);
+    assert_eq!(range.text()?, "This");
+
+    for path in [
+        "",
+        "?json",
+        "test.txt",
+        "__sharefs__/health",
+        "__sharefs__/shares",
+        "__sharefs__/api/shares",
+        "__sharefs__/api/share",
+        "__sharefs_v0.5.4__/index.js",
+    ] {
+        for authenticated in [false, true] {
+            let request = client.get(server.share_url().join(path)?);
+            let request = if authenticated {
+                request.basic_auth("owner", Some("secret"))
+            } else {
+                request
+            };
+            let response = request.send()?;
+            assert_eq!(
+                response.status(),
+                404,
+                "{path}, authenticated={authenticated}"
+            );
+            assert!(!response.headers().contains_key("www-authenticate"));
+        }
+    }
+    for method in [
+        reqwest::Method::PUT,
+        reqwest::Method::POST,
+        reqwest::Method::DELETE,
+        reqwest::Method::PATCH,
+        reqwest::Method::OPTIONS,
+        reqwest::Method::from_bytes(b"PROPFIND")?,
+        reqwest::Method::from_bytes(b"COPY")?,
+        reqwest::Method::from_bytes(b"MOVE")?,
+    ] {
+        assert_eq!(
+            client
+                .request(method, public.clone())
+                .basic_auth("owner", Some("secret"))
+                .body("overwrite")
+                .send()?
+                .status(),
+            403
+        );
+    }
+    for path in [
+        "/index.html",
+        "/",
+        "/__sharefs__/health",
+        "/__sharefs__/api/shares",
+    ] {
+        let mut other = public.clone();
+        other.set_path(path);
+        assert_eq!(
+            client
+                .get(other)
+                .basic_auth("owner", Some("secret"))
+                .send()?
+                .status(),
+            404
+        );
+    }
+    let mut duplicate = public.clone();
+    duplicate.set_query(Some(&format!("{}&token=invalid", public.query().unwrap())));
+    assert_eq!(client.get(duplicate).send()?.status(), 404);
+    assert_eq!(
+        fs::read_to_string(server.path().join("test.txt"))?,
+        "This is test.txt"
+    );
+
+    // A single Sharing instance owns the index for both listeners.
+    let token = public
+        .query_pairs()
+        .find(|(name, _)| name == "token")
+        .unwrap()
+        .1
+        .into_owned();
+    let response = client
+        .delete(server.url().join(API)?)
+        .basic_auth("owner", Some("secret"))
+        .header("Content-Type", "application/json")
+        .body(json!({"path": "/test.txt", "token": token}).to_string())
+        .send()?;
+    assert!(response.status().is_success());
+    assert_eq!(client.get(public).send()?.status(), 404);
+    Ok(())
 }
 
 #[test]

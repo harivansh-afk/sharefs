@@ -12,6 +12,12 @@ share --expires=2h notes.md
 Links serve the current file contents. Renaming a file breaks its link. Manage
 or revoke links from **Shares** in the web UI.
 
+For a separate public sharing hostname, set `--share-listen 127.0.0.1:39474`
+and proxy that hostname to this listener. It accepts signed GET/HEAD requests
+only, even when owner credentials are supplied. Keep the main listener behind
+your private authentication gateway. Both listeners share the same revocation
+state. Set `--public-url` to the public sharing origin.
+
 Use `j`/`k` to select a row, `Enter` to open it, and `-` to go up a folder.
 Press `?` or click the help icon beside Upload for keyboard shortcuts.
 

@@ -122,8 +122,26 @@ fn serve(
 ) -> Result<Vec<JoinHandle<()>>> {
     let tls_config = (args.tls_cert.clone(), args.tls_key.clone());
     let control_socket = args.control_socket.clone();
+    let share_listener = args.share_listen.map(create_listener).transpose()?;
     let server_handle = Arc::new(Server::init(args, running)?);
     let mut handles = vec![];
+    if let Some(listener) = share_listener {
+        println!("Sharing on http://{}", listener.local_addr()?);
+        let server = server_handle.clone();
+        handles.push(tokio::spawn(async move {
+            loop {
+                let Ok((stream, addr)) = listener.accept().await else {
+                    continue;
+                };
+                tokio::spawn(handle_stream(
+                    server.clone(),
+                    TokioIo::new(stream),
+                    Some(addr),
+                    true,
+                ));
+            }
+        }));
+    }
     if let Some(path) = control_socket {
         let sharing = server_handle
             .sharing
@@ -166,6 +184,7 @@ fn serve(
                                     server_handle.clone(),
                                     stream,
                                     Some(addr),
+                                    false,
                                 ));
                             }
                         });
@@ -183,6 +202,7 @@ fn serve(
                                     server_handle.clone(),
                                     stream,
                                     Some(addr),
+                                    false,
                                 ));
                             }
                         });
@@ -201,7 +221,7 @@ fn serve(
                             continue;
                         };
                         let stream = TokioIo::new(stream);
-                        tokio::spawn(handle_stream(server_handle.clone(), stream, None));
+                        tokio::spawn(handle_stream(server_handle.clone(), stream, None, false));
                     }
                 });
                 handles.push(handle);
@@ -211,12 +231,17 @@ fn serve(
     Ok(handles)
 }
 
-async fn handle_stream<T>(handle: Arc<Server>, stream: TokioIo<T>, addr: Option<SocketAddr>)
-where
+async fn handle_stream<T>(
+    handle: Arc<Server>,
+    stream: TokioIo<T>,
+    addr: Option<SocketAddr>,
+    shares_only: bool,
+) where
     T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
-    let hyper_service =
-        service_fn(move |request: Request<Incoming>| handle.clone().call(request, addr));
+    let hyper_service = service_fn(move |request: Request<Incoming>| {
+        handle.clone().call(request, addr, shares_only)
+    });
 
     match Builder::new(TokioExecutor::new())
         .serve_connection_with_upgrades(stream, hyper_service)

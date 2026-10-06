@@ -6,7 +6,7 @@ use clap_complete::{generate, Generator, Shell};
 use serde::{Deserialize, Deserializer};
 use smart_default::SmartDefault;
 use std::env;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
 
 use crate::auth::AccessControl;
@@ -64,6 +64,15 @@ pub fn build_cli() -> Command {
                 .long("public-url")
                 .value_name("URL")
                 .help("Public origin for share links"),
+        )
+        .arg(
+            Arg::new("share-listen")
+                .env("SHAREFS_SHARE_LISTEN")
+                .hide_env(true)
+                .long("share-listen")
+                .value_parser(value_parser!(SocketAddr))
+                .value_name("ADDRESS")
+                .help("Loopback HTTP listener serving only signed file links"),
         )
         .arg(
             Arg::new("control-socket")
@@ -320,6 +329,7 @@ pub struct Args {
     pub share_key_file: Option<PathBuf>,
     pub share_state_dir: Option<PathBuf>,
     pub public_url: Option<String>,
+    pub share_listen: Option<SocketAddr>,
     pub control_socket: Option<PathBuf>,
     pub share_roots: std::collections::BTreeMap<String, PathBuf>,
     #[serde(skip)]
@@ -383,6 +393,15 @@ impl Args {
         }
         if let Some(url) = matches.get_one::<String>("public-url") {
             args.public_url = Some(url.clone());
+        }
+        if let Some(address) = matches.get_one::<SocketAddr>("share-listen") {
+            args.share_listen = Some(*address);
+        }
+        if args
+            .share_listen
+            .is_some_and(|address| !address.ip().is_loopback())
+        {
+            bail!("share listener must bind to loopback; expose it through an HTTPS proxy");
         }
         if let Some(path) = matches.get_one::<PathBuf>("control-socket") {
             args.control_socket = Some(path.clone());
