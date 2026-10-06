@@ -377,6 +377,8 @@ fn raw_files_are_sandboxed_for_owners_and_recipients() -> Result<(), Error> {
         assert!(policy.contains("sandbox allow-downloads;"));
         assert!(policy.contains("default-src 'none'"));
         assert!(policy.contains("form-action 'none'"));
+        assert!(policy.contains("media-src 'self'"));
+        assert!(policy.contains("img-src 'self' data:"));
         assert_eq!(response.headers()["x-content-type-options"], "nosniff");
     }
     let ui = client
