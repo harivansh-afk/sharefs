@@ -30,6 +30,7 @@ impl Sharing {
         let Some(key_path) = &args.share_key_file else {
             ensure!(
                 args.public_url.is_none()
+                    && args.share_listen.is_none()
                     && args.control_socket.is_none()
                     && args.share_state_dir.is_none(),
                 "sharing requires --share-key-file"

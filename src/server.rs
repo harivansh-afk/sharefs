@@ -115,6 +115,7 @@ impl Server {
         self: Arc<Self>,
         req: Request,
         addr: Option<SocketAddr>,
+        shares_only: bool,
     ) -> Result<Response, hyper::Error> {
         let uri = req.uri().clone();
         let assets_prefix = &self.assets_prefix;
@@ -124,7 +125,12 @@ impl Server {
             http_log_data.insert("remote_addr".to_string(), addr.ip().to_string());
         }
 
-        let mut res = match self.clone().handle(req).await {
+        let result = if shares_only {
+            self.handle_shared(req).await
+        } else {
+            self.clone().handle(req).await
+        };
+        let mut res = match result {
             Ok(res) => {
                 http_log_data.insert("status".to_string(), res.status().as_u16().to_string());
                 if !uri.path().starts_with(assets_prefix) {
@@ -148,6 +154,30 @@ impl Server {
             add_cors(&mut res);
         }
         Ok(res)
+    }
+
+    async fn handle_shared(&self, req: Request) -> Result<Response> {
+        let mut res = Response::default();
+        if !matches!(*req.method(), Method::GET | Method::HEAD) {
+            status_forbid(&mut res);
+            return Ok(res);
+        }
+        let Some(path) = self.resolve_path(req.uri().path()) else {
+            status_not_found(&mut res);
+            return Ok(res);
+        };
+        let params = form_urlencoded::parse(req.uri().query().unwrap_or_default().as_bytes());
+        let mut tokens = params.filter(|(name, _)| name == "token");
+        let Some((_, token)) = tokens.next() else {
+            status_not_found(&mut res);
+            return Ok(res);
+        };
+        if token.is_empty() || tokens.next().is_some() {
+            status_not_found(&mut res);
+            return Ok(res);
+        }
+        self.shared_file(&path, &token, req.method(), req.headers())
+            .await
     }
 
     pub async fn handle(self: Arc<Self>, req: Request) -> Result<Response> {
