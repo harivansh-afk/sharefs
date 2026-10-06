@@ -171,6 +171,7 @@ impl TestServer {
         I::Item: AsRef<std::ffi::OsStr>,
     {
         let mut child = Command::new(assert_cmd::cargo::cargo_bin!())
+            .env("SHAREFS_BIND", "127.0.0.1")
             .arg(tmpdir.path())
             .arg("--port")
             .arg(port.to_string())

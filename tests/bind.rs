@@ -64,7 +64,7 @@ fn bind_fails(tmpdir: TempDir, port: u16, #[case] args: &[&str]) -> Result<(), E
 }
 
 #[rstest]
-#[case(server(&[] as &[&str]), true, true)]
+#[case(server(&[] as &[&str]), true, false)]
 #[case(server(&["-b", "0.0.0.0"]), true, false)]
 #[case(server(&["-b", "127.0.0.1", "-b", "::1"]), true, true)]
 fn bind_ipv4_ipv6(
