@@ -954,7 +954,7 @@ impl Server {
         let size = meta.len();
         if self.sharing.is_some() {
             res.headers_mut().insert("content-security-policy", HeaderValue::from_static(
-                "sandbox allow-downloads; default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
+                "sandbox allow-downloads; default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; media-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
             ));
             res.headers_mut().insert(
                 "x-content-type-options",
