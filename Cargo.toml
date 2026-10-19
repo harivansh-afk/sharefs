@@ -14,9 +14,9 @@ keywords = ["static", "file", "server", "webdav", "cli"]
 [dependencies]
 alphanumeric-sort = "1.4"
 anyhow = "1.0"
-async-deflate-zip = "0.2.0"
+async-deflate-zip = "0.5.0"
 async-stream = "0.3"
-base64 = "0.22"
+base64 = "0.23"
 bytes = "1.5"
 chardetng = "1.0"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
@@ -66,7 +66,7 @@ assert_cmd = "2"
 reqwest = { version = "0.13", features = ["blocking", "multipart", "rustls"], default-features = false }
 assert_fs = "1"
 port_check = "0.3"
-rstest = "0.26.1"
+rstest = "0.28"
 regex = "1"
 url = "2"
 predicates = "3"
