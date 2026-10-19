@@ -1,5 +1,5 @@
 use anyhow::{bail, Context, Result};
-use async_deflate_zip::Compression;
+use async_deflate_zip::CompressionLevel;
 use clap::builder::{PossibleValue, PossibleValuesParser};
 use clap::{value_parser, Arg, ArgAction, ArgMatches, Command, ValueEnum};
 use clap_complete::{generate, Generator, Shell};
@@ -425,7 +425,7 @@ impl Args {
         args.uri_prefix = if args.path_prefix.is_empty() {
             "/".to_owned()
         } else {
-            format!("/{}/", &encode_uri(&args.path_prefix))
+            format!("/{}/", encode_uri(&args.path_prefix))
         };
 
         if let Some(hidden) = matches.get_many::<String>("hidden") {
@@ -622,12 +622,12 @@ impl ValueEnum for Compress {
 }
 
 impl Compress {
-    pub fn to_compression(self) -> Compression {
+    pub fn to_compression(self) -> CompressionLevel {
         match self {
-            Compress::None => Compression::none(),
-            Compress::Low => Compression::fast(),
-            Compress::Medium => Compression::default(),
-            Compress::High => Compression::best(),
+            Compress::None => CompressionLevel::none(),
+            Compress::Low => CompressionLevel::fast(),
+            Compress::Medium => CompressionLevel::default(),
+            Compress::High => CompressionLevel::best(),
         }
     }
 }

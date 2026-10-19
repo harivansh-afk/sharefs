@@ -9,7 +9,7 @@ use crate::Args;
 use sharefs::{ShareRequest, MAX_MESSAGE_BYTES};
 
 use anyhow::{anyhow, Result};
-use async_deflate_zip::{Compression, WriterOptions, ZipWriter};
+use async_deflate_zip::{CompressionLevel, EntryOptions, ZipWriter};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use bytes::Bytes;
 use chrono::{LocalResult, TimeZone, Utc};
@@ -89,7 +89,7 @@ impl Server {
                 args.uri_prefix[0..args.uri_prefix.len() - 1].to_string(),
                 encode_uri(&format!(
                     "{}{}",
-                    &args.uri_prefix,
+                    args.uri_prefix,
                     get_file_name(&args.serve_path)
                 )),
             ]
@@ -2007,7 +2007,7 @@ impl PathItem {
             LocalResult::Single(v) => format!("{}", v.format("%a, %d %b %Y %H:%M:%S GMT")),
             _ => String::new(),
         };
-        let mut href = encode_uri(&format!("{}{}", prefix, &self.name));
+        let mut href = encode_uri(&format!("{}{}", prefix, self.name));
         if self.is_dir() && !href.ends_with('/') {
             href.push('/');
         }
@@ -2181,7 +2181,7 @@ async fn zip_dir<W: AsyncWrite + Unpin>(
     dir: &Path,
     access_paths: AccessPaths,
     hidden: &[String],
-    compression: Compression,
+    compression: CompressionLevel,
     follow_symlinks: bool,
     serve_path: PathBuf,
     running: Arc<AtomicBool>,
@@ -2197,7 +2197,7 @@ async fn zip_dir<W: AsyncWrite + Unpin>(
         move |x| x.path().symlink_metadata().is_ok() && x.file_type().is_file(),
     ))
     .await?;
-    let mut zip = ZipWriter::new(&mut *writer).with_level(compression);
+    let mut zip = ZipWriter::new(&mut *writer).with_compression_level(compression);
     for zip_path in zip_paths.into_iter() {
         let filename = match zip_path
             .strip_prefix(dir)
@@ -2208,13 +2208,13 @@ async fn zip_dir<W: AsyncWrite + Unpin>(
             Some(v) => v,
             None => continue,
         };
-        let options = WriterOptions::from_path(&zip_path).await?;
+        let options = EntryOptions::from_path(&zip_path).await?;
         let mut file = File::open(&zip_path).await?;
-        let mut entry = zip.append_file(&filename, options).await?;
+        let mut entry = zip.start_file(&filename, &options).await?;
         io::copy(&mut file, &mut entry).await?;
-        entry.close().await?;
+        entry.finish().await?;
     }
-    zip.finalize().await?;
+    zip.finish().await?;
     Ok(())
 }
 
